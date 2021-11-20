@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package messaging;
+
+option go_package = "./";
+
+service PingService {
+    rpc PingNode (PingRequest) returns (PingReply) {}
+}
+
+message PingRequest {
+    string nodeAddress = 1;
+}
+
+message PingReply {
+    string nodeAddress = 1;
+    string status = 2;
+}
