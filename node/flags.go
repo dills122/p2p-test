@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/urfave/cli"
+	cli "github.com/urfave/cli/v2"
 )
 
 var AppConfigFlags = []cli.Flag{

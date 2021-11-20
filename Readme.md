@@ -13,5 +13,5 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 To generate proto services
 
 ```sh
-protoc -I=./ --go_out=./gen ./proto/ping-service.proto
+protoc -I ./ --go_out=./gen --go-grpc_out=./gen ./proto/ping-service.proto
 ```
