@@ -16,6 +16,12 @@ To generate proto services
 protoc --proto_path=proto --go_out=out --go-grpc_out=out --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative ./proto/ping-service.proto
 ```
 
+From a Google Tutorial, with minor modifications
+
+```sh
+protoc --proto_path=proto --go-grpc_out=out --go-grpc_opt=paths=source_relative ./proto/ping-service.proto
+```
+
 To run the test file
 
 ```sh
