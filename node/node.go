@@ -1,9 +1,8 @@
-package main
+package node
 
 import (
 	"context"
-
-	ping "github.com/dills122/p2p-test/proto"
+	ping "node/proto"
 )
 
 type Node struct {

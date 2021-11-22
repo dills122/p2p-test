@@ -15,3 +15,9 @@ To generate proto services
 ```sh
 protoc -I ./ --go_out=./gen --go-grpc_out=./gen ./proto/ping-service.proto
 ```
+
+To run the test file
+
+```sh
+go run .
+```
