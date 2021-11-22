@@ -3,7 +3,7 @@ package node
 import (
 	"context"
 
-	ping "github.com/dills122/p2p-test/tree/dsteele/feat/inital-node-mod/node/out/ping"
+	ping "github.com/dills122/p2p-test/node/out/ping"
 )
 
 type Node struct {
