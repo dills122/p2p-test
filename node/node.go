@@ -2,7 +2,8 @@ package node
 
 import (
 	"context"
-	ping "node/proto"
+
+	ping "github.com/dills122/p2p-test/tree/dsteele/feat/inital-node-mod/node/out/ping"
 )
 
 type Node struct {

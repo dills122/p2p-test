@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package messaging;
 
-option go_package = "node/proto";
+option go_package = "github.com/dills122/p2p-test/node/proto/ping";
 
 service PingService {
     rpc PingNode (PingRequest) returns (PingReply) {}
