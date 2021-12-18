@@ -6,22 +6,26 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/dills122/p2p-test/node"
 	"github.com/spf13/cobra"
 )
 
 // pingTestCmd represents the pingTest command
 var pingTestCmd = &cobra.Command{
 	Use:   "pingTest",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "A ping test",
+	Long:  `A test that will start x number of nodes and ping each with a desired message before shutting down`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("pingTest called")
+		confNodeOne := node.Config{
+			NodeName:                "node-one",
+			NodeAddr:                "127.0.0.1:10000",
+			ServiceDiscoveryAddress: "127.0.0.1:80000",
+		}
+		fmt.Printf("Node: %s started at %s and running on %s", confNodeOne.NodeName, time.Now().UTC(), confNodeOne.NodeAddr)
+		activeNodeOne := node.New(confNodeOne.NodeName, confNodeOne.NodeAddr)
+		activeNodeOne.Start()
 	},
 }
 
@@ -36,5 +40,5 @@ func init() {
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// pingTestCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	pingTestCmd.Flags().StringP("message", "m", "Hello world!", "message to broadcast in test")
 }
