@@ -10,6 +10,7 @@ import (
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
 )
 
 type Node struct {
@@ -29,7 +30,7 @@ func New(name string, address string) Node {
 func (node *Node) Start() error {
 	log.Println("Starting listeners for trusted nodes")
 	//Starts server
-	node.StartListening()
+	go node.StartListening()
 
 	log.Println("Listeners started")
 	return nil
@@ -48,17 +49,15 @@ func (node *Node) PingAllNodes(ctx context.Context) {
 
 func (node *Node) StartListening() {
 	log.Println("Inside listener: starting")
-	lis, err := net.Listen("tcp", ":10000")
+	lis, err := net.Listen("tcp", node.Addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	log.Println("Inside listener: tcp started")
 
 	grpcServer := grpc.NewServer()
 
-	ping.RegisterPingServiceServer(grpcServer, &Node{})
-
-	log.Println("Inside listener: grpc starting")
+	ping.RegisterPingServiceServer(grpcServer, node)
+	reflection.Register(grpcServer)
 
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
