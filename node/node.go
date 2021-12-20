@@ -28,11 +28,12 @@ func New(name string, address string) Node {
 }
 
 func (node *Node) Start() error {
-	log.Println("Starting listeners for trusted nodes")
-	//Starts server
-	go node.StartListening()
+	log.Println("Starting Node")
 
-	log.Println("Listeners started")
+	go node.startServer()
+
+	log.Println("Started gRPC Server")
+
 	return nil
 }
 
@@ -47,8 +48,8 @@ func (node *Node) PingAllNodes(ctx context.Context) {
 	}
 }
 
-func (node *Node) StartListening() {
-	log.Println("Inside listener: starting")
+func (node *Node) startServer() {
+	log.Println("Starting gRPC Server")
 	lis, err := net.Listen("tcp", node.Addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -76,6 +77,7 @@ func (node *Node) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping
 
 // Sets up a client for a given peer to communicate with
 func (node *Node) setupClient(peerAddress string) ping.PingServiceClient {
+	log.Printf("Creating client for node %s", peerAddress)
 	opts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffLinear(100 * time.Millisecond)),
 		grpc_retry.WithCodes(codes.NotFound, codes.Aborted),
