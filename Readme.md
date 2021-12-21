@@ -2,28 +2,29 @@
 
 Experiment with P2P networks using gRPC in golang.
 
-Packages needed to get protoc and proto gen working
+## Getting Started
 
-```sh
-go get -u google.golang.org/protobuf
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```bash
+go get -u
+go mod tidy
 ```
 
-To generate proto services
+Generating proto files
 
-```sh
-protoc --proto_path=proto --go_out=out --go-grpc_out=out --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative ./proto/ping-service.proto
+```bash
+protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative pkg/ping/ping.proto
 ```
 
-From a Google Tutorial, with minor modifications
+Get info on all the available commands
 
 ```sh
-protoc --proto_path=proto --go-grpc_out=out --go-grpc_opt=paths=source_relative ./proto/ping-service.proto
+go run ./main.go --help
+
 ```
 
-To run the test file
+You can do a test execution with the ping test command, this will setup two nodes that will ping each other.
 
 ```sh
-go run .
+go run ./main.go pingTest
+
 ```

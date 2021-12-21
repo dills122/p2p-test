@@ -1,6 +1,6 @@
-package main
+package node
 
-type config struct {
+type Config struct {
 	NodeName                string
 	NodeAddr                string
 	ServiceDiscoveryAddress string
