@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -27,14 +28,10 @@ func New(name string, address string) Node {
 	return n
 }
 
-func (node *Node) Start() error {
+func (node *Node) Start() {
 	log.Println("Starting Node")
 
-	go node.startServer()
-
-	log.Println("Started gRPC Server")
-
-	return nil
+	node.startServer()
 }
 
 func (node *Node) PingAllNodes(ctx context.Context) {
@@ -49,7 +46,7 @@ func (node *Node) PingAllNodes(ctx context.Context) {
 }
 
 func (node *Node) startServer() {
-	log.Println("Starting gRPC Server")
+	log.Println("Started gRPC Server")
 	lis, err := net.Listen("tcp", node.Addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -65,18 +62,31 @@ func (node *Node) startServer() {
 	}
 }
 
-// Nodes Client Ping method
-func (node *Node) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
-	client := node.setupClient(stream.NodeAddress)
-	pingReply, err := client.PingNode(ctx, stream, grpc_retry.WithMax(3))
+func (node *Node) PingOtherNode(peerAddr *string) {
+	client, conn := node.setupClient(*peerAddr)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	pingReply, err := client.PingNode(ctx, &ping.PingRequest{NodeAddress: *peerAddr}, grpc_retry.WithMax(3))
+	defer conn.Close()
+	defer cancel()
 	if err != nil {
-		log.Fatal("Failed to get status ping")
+		log.Fatalf("Failed to get status ping: %v", err)
 	}
-	return pingReply, err
+	fmt.Printf("Reply received from node %s with status: %s \n", pingReply.NodeAddress, pingReply.Status)
 }
 
-// Sets up a client for a given peer to communicate with
-func (node *Node) setupClient(peerAddress string) ping.PingServiceClient {
+// ***************
+// SERVER METHODS
+// ***************
+
+func (node *Node) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
+	return &ping.PingReply{NodeAddress: stream.NodeAddress, Status: "received"}, nil
+}
+
+// ***************
+// PRIVATE METHODS
+// ***************
+
+func (node *Node) setupClient(peerAddress string) (ping.PingServiceClient, grpc.ClientConn) {
 	log.Printf("Creating client for node %s", peerAddress)
 	opts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffLinear(100 * time.Millisecond)),
@@ -88,10 +98,8 @@ func (node *Node) setupClient(peerAddress string) ping.PingServiceClient {
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(opts...)),
 	)
 	if err != nil {
-		log.Printf("Unable to connect to %s: %v", peerAddress, err)
+		log.Fatalf("Unable to connect to %s: %v", peerAddress, err)
 	}
 
-	defer conn.Close()
-
-	return ping.NewPingServiceClient(conn)
+	return ping.NewPingServiceClient(conn), *conn
 }

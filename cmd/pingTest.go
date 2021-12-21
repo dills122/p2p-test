@@ -5,12 +5,10 @@ Copyright © 2021 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	"github.com/dills122/p2p-test/node"
-	ping "github.com/dills122/p2p-test/pkg/ping"
 	"github.com/spf13/cobra"
 )
 
@@ -26,20 +24,19 @@ var pingTestCmd = &cobra.Command{
 			ServiceDiscoveryAddress: "127.0.0.1:80000",
 		}
 		activeNodeOne := node.New(confNodeOne.NodeName, confNodeOne.NodeAddr)
-		activeNodeOne.Start()
-		fmt.Printf("Node: %s started at %s and running on %s", confNodeOne.NodeName, time.Now().UTC(), confNodeOne.NodeAddr)
+		go activeNodeOne.Start()
+		fmt.Printf("Node: %s started at %s and running on %s \n", confNodeOne.NodeName, time.Now().UTC(), confNodeOne.NodeAddr)
 		confNodeTwo := node.Config{
 			NodeName:                "node-two",
 			NodeAddr:                "127.0.0.1:10001",
 			ServiceDiscoveryAddress: "127.0.0.1:80000",
 		}
 		activeNodeTwo := node.New(confNodeTwo.NodeName, confNodeTwo.NodeAddr)
-		activeNodeTwo.Start()
-		fmt.Printf("Node: %s started at %s and running on %s", confNodeTwo.NodeName, time.Now().UTC(), confNodeTwo.NodeAddr)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-		defer cancel()
-		activeNodeOne.PingNode(ctx, &ping.PingRequest{NodeAddress: confNodeTwo.NodeAddr})
-		activeNodeTwo.PingNode(ctx, &ping.PingRequest{NodeAddress: confNodeOne.NodeAddr})
+		go activeNodeTwo.Start()
+		fmt.Printf("Node: %s started at %s and running on %s \n", confNodeTwo.NodeName, time.Now().UTC(), confNodeTwo.NodeAddr)
+		time.Sleep(2 * time.Second)
+		activeNodeOne.PingOtherNode(&confNodeTwo.NodeAddr)
+		activeNodeTwo.PingOtherNode(&confNodeOne.NodeAddr)
 	},
 }
 
