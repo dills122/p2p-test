@@ -14,6 +14,12 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+const (
+	OFFLINE int = 0
+	READY       = 1
+	CLOSED      = 2
+)
+
 type Node struct {
 	Name string
 	Addr string
@@ -37,11 +43,11 @@ func (node *Node) Start() {
 func (node *Node) PingAllNodes(ctx context.Context) {
 	log.Println("Executing known peer list")
 	for _, peer := range node.Peers {
-		reply, err := node.PingNode(ctx, &ping.PingRequest{NodeAddress: peer.Addr})
+		reply, err := node.PingNode(ctx, &ping.PingRequest{Message: "Pinging"}) // TODO update with a pass through for message
 		if err != nil {
 			log.Fatalf("failed to Ping node at Address: %s", peer.Addr)
 		}
-		log.Printf("Pinged node %s and got a status of %s", peer.Addr, reply.Status)
+		log.Printf("Pinged node %s and got a status of %d", peer.Addr, reply.Status)
 	}
 }
 
@@ -62,16 +68,16 @@ func (node *Node) startServer() {
 	}
 }
 
-func (node *Node) PingOtherNode(peerAddr *string) {
+func (node *Node) PingOtherNode(peerAddr *string, message *string) {
 	client, conn := node.setupClient(*peerAddr)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	pingReply, err := client.PingNode(ctx, &ping.PingRequest{NodeAddress: *peerAddr}, grpc_retry.WithMax(3))
+	pingReply, err := client.PingNode(ctx, &ping.PingRequest{Message: *message}, grpc_retry.WithMax(3))
 	defer conn.Close()
 	defer cancel()
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
-	fmt.Printf("Reply received from node %s with status: %s \n", pingReply.NodeAddress, pingReply.Status)
+	fmt.Printf("Reply received from node %s with status: %d \n", *peerAddr, pingReply.Status)
 }
 
 // ***************
@@ -79,7 +85,7 @@ func (node *Node) PingOtherNode(peerAddr *string) {
 // ***************
 
 func (node *Node) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
-	return &ping.PingReply{NodeAddress: stream.NodeAddress, Status: "received"}, nil
+	return &ping.PingReply{Message: stream.Message, Status: READY}, nil
 }
 
 // ***************
