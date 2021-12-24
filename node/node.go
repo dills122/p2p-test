@@ -16,8 +16,8 @@ import (
 
 const (
 	OFFLINE int = 0
-	READY       = 1
-	CLOSED      = 2
+	READY   int = 1
+	CLOSED  int = 2
 )
 
 type Node struct {
@@ -68,10 +68,10 @@ func (node *Node) startServer() {
 	}
 }
 
-func (node *Node) PingOtherNode(peerAddr *string, message *string) {
+func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	client, conn := node.setupClient(*peerAddr)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	pingReply, err := client.PingNode(ctx, &ping.PingRequest{Message: *message}, grpc_retry.WithMax(3))
+	pingReply, err := client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3))
 	defer conn.Close()
 	defer cancel()
 	if err != nil {
@@ -85,7 +85,7 @@ func (node *Node) PingOtherNode(peerAddr *string, message *string) {
 // ***************
 
 func (node *Node) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
-	return &ping.PingReply{Message: stream.Message, Status: READY}, nil
+	return &ping.PingReply{Message: stream.Message, Status: int32(READY)}, nil
 }
 
 // ***************

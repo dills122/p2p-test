@@ -35,8 +35,8 @@ var pingTestCmd = &cobra.Command{
 		go activeNodeTwo.Start()
 		fmt.Printf("Node: %s started at %s and running on %s \n", confNodeTwo.NodeName, time.Now().UTC(), confNodeTwo.NodeAddr)
 		time.Sleep(2 * time.Second)
-		activeNodeOne.PingOtherNode(&confNodeTwo.NodeAddr)
-		activeNodeTwo.PingOtherNode(&confNodeOne.NodeAddr)
+		activeNodeOne.PingOtherNode(&confNodeTwo.NodeAddr, "hello from node 1")
+		activeNodeTwo.PingOtherNode(&confNodeOne.NodeAddr, "hello from node 2")
 	},
 }
 
