@@ -21,6 +21,7 @@ var startCmd = &cobra.Command{
 	Short: "start node with interactive shell",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
+		// TODO need to implement go-routine to start node
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			fmt.Print("$ ")

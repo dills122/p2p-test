@@ -14,7 +14,7 @@ var sendCmd = &cobra.Command{
 	Short: "send a message in the network",
 	Long:  `send a message in the network`,
 	Run: func(cmd *cobra.Command, args []string) {
-
+		// TODO implement the ping node here using existing node connection
 	},
 }
 
