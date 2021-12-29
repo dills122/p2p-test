@@ -59,8 +59,8 @@ func (node *Node) startServer() {
 	}
 
 	grpcServer := grpc.NewServer()
+	node.setupServerServices(grpcServer)
 
-	ping.RegisterPingServiceServer(grpcServer, node)
 	reflection.Register(grpcServer)
 
 	if err := grpcServer.Serve(lis); err != nil {
@@ -77,7 +77,7 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
-	fmt.Printf("Reply received from node %s with status: %d \n", *peerAddr, pingReply.Status)
+	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", *peerAddr, pingReply.Status, pingReply.Message)
 }
 
 // ***************
@@ -108,4 +108,8 @@ func (node *Node) setupClient(peerAddress string) (ping.PingServiceClient, grpc.
 	}
 
 	return ping.NewPingServiceClient(conn), *conn
+}
+
+func (node *Node) setupServerServices(server *grpc.Server) {
+	ping.RegisterPingServiceServer(server, node)
 }
