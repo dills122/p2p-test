@@ -4,7 +4,7 @@ import "google/protobuf/empty.proto";
 
 package messaging;
 
-option go_package = "github.com/dills122/p2p-test/node/out";
+option go_package = "github.com/dills122/p2p-test/node/ping";
 
 service PingService {
     rpc PingNode (PingRequest) returns (PingReply) {}
