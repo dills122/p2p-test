@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	commCmd "github.com/dills122/p2p-test/cmd/p2pc"
+	"github.com/dills122/p2p-test/node"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +22,11 @@ var startCmd = &cobra.Command{
 	Short: "start node with interactive shell",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO need to implement go-routine to start node
+		config := setupNodeConfig(cmd)
+		activeNodeOne := node.New(config.NodeName, config.NodeAddr)
+		//TODO need to wait on this to finish before starting interactive console
+		go activeNodeOne.Start()
+		// TODO need to implement this on the node https://stackoverflow.com/questions/66798278/golang-grpc-how-to-determine-when-the-server-has-started-listening
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			fmt.Print("$ ")
@@ -45,6 +50,24 @@ func runCommand(commandStr string) {
 	default:
 		fmt.Println("Unknown command")
 	}
+}
+
+func setupNodeConfig(cmd *cobra.Command) node.Config {
+	nodeAddress, _ := cmd.Flags().GetString("address")
+	nodeName, _ := cmd.Flags().GetString("name")
+	listenerAddressSlice, _ := cmd.Flags().GetStringSlice("listener-addresses")
+	var listenerAddress string
+	if len(listenerAddressSlice) > 0 {
+		listenerAddress = listenerAddressSlice[0]
+	} else {
+		listenerAddress = "127.0.0.1:80000"
+	}
+	config := node.Config{
+		NodeName:                nodeName,
+		NodeAddr:                nodeAddress,
+		ServiceDiscoveryAddress: listenerAddress,
+	}
+	return config
 }
 
 func init() {
