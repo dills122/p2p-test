@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	commCmd "github.com/dills122/p2p-test/cmd/p2pc"
 	"github.com/dills122/p2p-test/node"
@@ -23,10 +25,12 @@ var startCmd = &cobra.Command{
 	Short: "start node with interactive shell",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
+		setupCloseHandler()
 		config := setupNodeConfig(cmd)
 		activeNodeOne := node.New(config.NodeName, config.NodeAddr)
 		//TODO need to wait on this to finish before starting interactive console
 		go activeNodeOne.Start()
+
 		isReady := activeNodeOne.CheckIfReady()
 		if !isReady {
 			log.Fatalf("Error when checking status of server")
@@ -46,6 +50,9 @@ var startCmd = &cobra.Command{
 func runCommand(commandStr string) {
 	commandStr = strings.TrimSuffix(commandStr, "\n")
 	arrCommandStr := strings.Fields(commandStr)
+	if len(arrCommandStr) <= 0 {
+		return
+	}
 	switch arrCommandStr[0] {
 	case "exit":
 		os.Exit(0)
@@ -54,6 +61,16 @@ func runCommand(commandStr string) {
 	default:
 		fmt.Println("Unknown command")
 	}
+}
+
+func setupCloseHandler() {
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		fmt.Println("Exiting interactive console")
+		os.Exit(0)
+	}()
 }
 
 func setupNodeConfig(cmd *cobra.Command) node.Config {
