@@ -4,20 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/reflection"
-)
-
-const (
-	OFFLINE int = 0
-	READY   int = 1
-	CLOSED  int = 2
 )
 
 type Node struct {
@@ -37,7 +29,7 @@ func New(name string, address string) Node {
 func (node *Node) Start() {
 	log.Println("Starting Node")
 
-	node.startServer()
+	StartServer(node.Addr)
 }
 
 func (node *Node) PingAllNodes(ctx context.Context) {
@@ -51,23 +43,6 @@ func (node *Node) PingAllNodes(ctx context.Context) {
 	}
 }
 
-func (node *Node) startServer() {
-	log.Println("Started gRPC Server")
-	lis, err := net.Listen("tcp", node.Addr)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-
-	grpcServer := grpc.NewServer()
-	node.setupServerServices(grpcServer)
-
-	reflection.Register(grpcServer)
-
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
-}
-
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	client, conn := node.setupClient(*peerAddr)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
@@ -78,14 +53,6 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
 	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", *peerAddr, pingReply.Status, pingReply.Message)
-}
-
-// ***************
-// SERVER METHODS
-// ***************
-
-func (node *Node) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
-	return &ping.PingReply{Message: stream.Message, Status: int32(READY)}, nil
 }
 
 // ***************
@@ -108,8 +75,4 @@ func (node *Node) setupClient(peerAddress string) (ping.PingServiceClient, grpc.
 	}
 
 	return ping.NewPingServiceClient(conn), *conn
-}
-
-func (node *Node) setupServerServices(server *grpc.Server) {
-	ping.RegisterPingServiceServer(server, node)
 }
