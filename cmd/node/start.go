@@ -7,6 +7,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -26,7 +27,10 @@ var startCmd = &cobra.Command{
 		activeNodeOne := node.New(config.NodeName, config.NodeAddr)
 		//TODO need to wait on this to finish before starting interactive console
 		go activeNodeOne.Start()
-		// TODO need to implement this on the node https://stackoverflow.com/questions/66798278/golang-grpc-how-to-determine-when-the-server-has-started-listening
+		isReady := activeNodeOne.CheckIfReady()
+		if !isReady {
+			log.Fatalf("Error when checking status of server")
+		}
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			fmt.Print("$ ")
