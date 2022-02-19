@@ -50,14 +50,12 @@ func setupServerServices(server *grpc.Server) {
 	grpc_health_v1.RegisterHealthServer(server, health.NewServer())
 }
 
-//Fiji GRPC server interface
 type GrpcServer interface {
 	Start(address string) error
 	AwaitTermination(shutdownHook func())
 	GetListener() net.Listener
 }
 
-//GRPC server builder
 type GrpcServerBuilder struct {
 	options                   []grpc.ServerOption
 	enabledReflection         bool
@@ -75,7 +73,6 @@ func (s grpcServer) GetListener() net.Listener {
 	return s.listener
 }
 
-//Build is responsible for building a Fiji GRPC server
 func (sb *GrpcServerBuilder) Build() GrpcServer {
 	srv := grpc.NewServer(sb.options...)
 	setupServerServices(srv)
@@ -100,7 +97,6 @@ func (s *grpcServer) Start(addr string) error {
 }
 
 // AwaitTermination makes the program wait for the signal termination
-// Valid signal termination (SIGINT, SIGTERM)
 func (s *grpcServer) AwaitTermination(shutdownHook func()) {
 	interruptSignal := make(chan os.Signal, 1)
 	signal.Notify(interruptSignal, syscall.SIGINT, syscall.SIGTERM)

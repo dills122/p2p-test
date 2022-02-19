@@ -1,7 +1,3 @@
-/*
-Copyright © 2021 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
@@ -19,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// startCmd represents the start command
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "start node with interactive shell",
@@ -28,7 +23,7 @@ var startCmd = &cobra.Command{
 		setupCloseHandler()
 		config := setupNodeConfig(cmd)
 		activeNodeOne := node.New(config.NodeName, config.NodeAddr)
-		//TODO need to wait on this to finish before starting interactive console
+
 		go activeNodeOne.Start()
 
 		isReady := activeNodeOne.CheckIfReady()
@@ -56,7 +51,7 @@ func runCommand(commandStr string) {
 	switch arrCommandStr[0] {
 	case "exit":
 		os.Exit(0)
-	case "start":
+	case "send":
 		commCmd.Execute()
 	default:
 		fmt.Println("Unknown command")

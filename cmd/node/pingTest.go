@@ -1,7 +1,3 @@
-/*
-Copyright © 2021 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
@@ -12,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pingTestCmd represents the pingTest command
 var pingTestCmd = &cobra.Command{
 	Use:   "pingTest",
 	Short: "A ping test",
@@ -43,13 +38,5 @@ var pingTestCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(pingTestCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// pingTestCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
 	pingTestCmd.Flags().StringP("message", "m", "Hello world!", "message to broadcast in test")
 }
