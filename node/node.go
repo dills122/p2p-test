@@ -34,10 +34,13 @@ func (node *Node) Start() {
 	StartServer(node.Addr)
 }
 
-func (node *Node) PingAllNodes(ctx context.Context) {
+func (node *Node) PingAllNodes(ctx context.Context, msg string) {
+	if len(msg) <= 0 {
+		msg = "Pinging"
+	}
 	log.Println("Executing known peer list")
 	for _, peer := range node.Peers {
-		reply, err := node.PingNode(ctx, &ping.PingRequest{Message: "Pinging"}) // TODO update with a pass through for message
+		reply, err := node.PingNode(ctx, &ping.PingRequest{Message: msg}) // TODO update with a pass through for message
 		if err != nil {
 			log.Fatalf("failed to Ping node at Address: %s", peer.Addr)
 		}

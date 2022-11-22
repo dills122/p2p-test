@@ -2,14 +2,15 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
-	commCmd "github.com/dills122/p2p-test/cmd/p2pc"
 	"github.com/dills122/p2p-test/node"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -37,22 +38,25 @@ var startCmd = &cobra.Command{
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
-			runCommand(cmdString)
+			runCommand(cmdString, &activeNodeOne)
 		}
 	},
 }
 
-func runCommand(commandStr string) {
+func runCommand(commandStr string, node *node.Node) {
 	commandStr = strings.TrimSuffix(commandStr, "\n")
-	arrCommandStr := strings.Fields(commandStr)
-	if len(arrCommandStr) <= 0 {
+	commandParts := strings.SplitN(commandStr, " ", 2)
+	if len(commandParts) <= 0 {
 		return
 	}
-	switch arrCommandStr[0] {
+	switch commandParts[0] {
 	case "exit":
 		os.Exit(0)
 	case "send":
-		commCmd.Execute()
+		msg := commandParts[1]
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		node.PingAllNodes(ctx, msg)
+		defer cancel()
 	default:
 		fmt.Println("Unknown command")
 	}
