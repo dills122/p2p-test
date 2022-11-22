@@ -23,6 +23,7 @@ type Node struct {
 }
 
 func New(name string, address string) Node {
+	//TODO need to fix/implement better peer/discovery system
 	staticPeerAddresses := []Peer{{Addr: "127.0.0.1:10000", Status: "unknown"}, {Addr: "127.0.0.1:10001", Status: "unknown"}, {Addr: "127.0.0.1:10002", Status: "unknown"}, {Addr: "127.0.0.1:10003", Status: "unknown"}}
 	n := Node{Name: name, Addr: address, Peers: staticPeerAddresses}
 	return n
@@ -40,7 +41,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 	}
 	log.Println("Executing known peer list")
 	for _, peer := range node.Peers {
-		reply, err := node.PingNode(ctx, &ping.PingRequest{Message: msg}) // TODO update with a pass through for message
+		reply, err := node.PingNode(ctx, &ping.PingRequest{Message: msg})
 		if err != nil {
 			log.Fatalf("failed to Ping node at Address: %s", peer.Addr)
 		}
