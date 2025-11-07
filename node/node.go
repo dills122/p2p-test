@@ -7,25 +7,18 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
-	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 )
 
 type Node struct {
-	Name string
-	Addr string
-
-	peers          PeerRegistry
-	listenersMu    sync.RWMutex
-	listeners      map[int]func(Event)
-	nextListenerID int
+	Name      string
+	Addr      string
+	peers     PeerRegistry
+	events    *eventBus
+	transport Transport
 	ping.UnimplementedPingServiceServer
 }
 
@@ -39,19 +32,7 @@ var defaultPeerAddresses = []string{
 const (
 	peerMetadataKey = "peers"
 	selfMetadataKey = "self-addr"
-	EventTypeSent   = "sent"
-	EventTypeRecv   = "received"
-	EventTypeError  = "error"
-	EventTypeInfo   = "info"
 )
-
-type Event struct {
-	Type      string
-	Peer      string
-	Message   string
-	Err       error
-	Timestamp time.Time
-}
 
 func New(config Config) *Node {
 	bootstrap := sanitizeBootstrap(config.NodeAddr, config.KnownPeerAddresses)
@@ -59,7 +40,13 @@ func New(config Config) *Node {
 		bootstrap = sanitizeBootstrap(config.NodeAddr, defaultPeerAddresses)
 	}
 	registry := NewPeerRegistry(config.NodeAddr, bootstrap)
-	n := &Node{Name: config.NodeName, Addr: config.NodeAddr, peers: registry}
+	n := &Node{
+		Name:      config.NodeName,
+		Addr:      config.NodeAddr,
+		peers:     registry,
+		events:    newEventBus(),
+		transport: NewGRPCTransport(),
+	}
 	return n
 }
 
@@ -98,7 +85,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		visited[peerAddr] = struct{}{}
 
 		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-		reply, discovered, err := node.pingPeer(peerCtx, peerAddr, msg)
+		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, msg)
 		cancel()
 		if err != nil {
 			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
@@ -127,7 +114,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	pingReply, discovered, err := node.pingPeer(ctx, *peerAddr, message)
+	pingReply, discovered, err := node.transport.Ping(ctx, *peerAddr, node.Addr, message)
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
@@ -143,7 +130,7 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 }
 
 func (node *Node) CheckIfReady() bool {
-	conn, err := node.setupClient(node.Addr)
+	conn, err := node.transport.Dial(node.Addr)
 	if err != nil {
 		log.Fatalf("Unable to connect to health service on %s: %v", node.Addr, err)
 	}
@@ -183,42 +170,6 @@ func (node *Node) CheckIfReady() bool {
 // ***************
 // PRIVATE METHODS
 // ***************
-
-func (node *Node) setupClient(peerAddress string) (*grpc.ClientConn, error) {
-	log.Printf("Creating client for node %s", peerAddress)
-	opts := []grpc_retry.CallOption{
-		grpc_retry.WithBackoff(grpc_retry.BackoffLinear(100 * time.Millisecond)),
-		grpc_retry.WithCodes(codes.NotFound, codes.Aborted),
-	}
-	conn, err := grpc.Dial(peerAddress,
-		grpc.WithInsecure(),
-		grpc.WithStreamInterceptor(grpc_retry.StreamClientInterceptor(opts...)),
-		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(opts...)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("unable to connect to %s: %w", peerAddress, err)
-	}
-
-	return conn, nil
-}
-
-func (node *Node) pingPeer(ctx context.Context, peerAddr string, message string) (*ping.PingReply, []string, error) {
-	conn, err := node.setupClient(peerAddr)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer conn.Close()
-
-	client := ping.NewPingServiceClient(conn)
-	ctx = metadata.AppendToOutgoingContext(ctx, selfMetadataKey, node.Addr)
-	var header metadata.MD
-	reply, err := client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3), grpc.Header(&header))
-	if err != nil {
-		return nil, nil, err
-	}
-	discovered := extractPeerAddresses(header)
-	return reply, discovered, nil
-}
 
 func sanitizeBootstrap(selfAddr string, addresses []string) []string {
 	if len(addresses) == 0 {
@@ -302,44 +253,10 @@ func (node *Node) mergePeerAddresses(addresses []string) {
 	}
 }
 
-func extractPeerAddresses(md metadata.MD) []string {
-	if md == nil {
-		return nil
-	}
-	values := md.Get(peerMetadataKey)
-	var addresses []string
-	for _, value := range values {
-		for _, addr := range strings.Split(value, ",") {
-			addr = strings.TrimSpace(addr)
-			if addr == "" {
-				continue
-			}
-			addresses = append(addresses, addr)
-		}
-	}
-	return addresses
-}
-
 func (node *Node) Subscribe(fn func(Event)) func() {
-	node.listenersMu.Lock()
-	defer node.listenersMu.Unlock()
-	if node.listeners == nil {
-		node.listeners = make(map[int]func(Event))
-	}
-	id := node.nextListenerID
-	node.nextListenerID++
-	node.listeners[id] = fn
-	return func() {
-		node.listenersMu.Lock()
-		defer node.listenersMu.Unlock()
-		delete(node.listeners, id)
-	}
+	return node.events.Subscribe(fn)
 }
 
 func (node *Node) emitEvent(evt Event) {
-	node.listenersMu.RLock()
-	defer node.listenersMu.RUnlock()
-	for _, listener := range node.listeners {
-		go listener(evt)
-	}
+	node.events.Emit(evt)
 }
