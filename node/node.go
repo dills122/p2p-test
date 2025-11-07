@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
@@ -15,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 )
 
 type Node struct {
@@ -32,6 +32,11 @@ var defaultPeerAddresses = []string{
 	"127.0.0.1:10003",
 }
 
+const (
+	peerMetadataKey = "peers"
+	selfMetadataKey = "self-addr"
+)
+
 func New(config Config) *Node {
 	bootstrap := sanitizeBootstrap(config.NodeAddr, config.KnownPeerAddresses)
 	if len(bootstrap) == 0 {
@@ -45,7 +50,7 @@ func New(config Config) *Node {
 func (node *Node) Start() {
 	log.Println("Starting Node")
 
-	StartServer(node.Addr)
+	StartServer(node)
 }
 
 func (node *Node) PingAllNodes(ctx context.Context, msg string) {
@@ -58,34 +63,47 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		return
 	}
 	log.Println("Executing known peer list")
-	var wg sync.WaitGroup
+
+	visited := make(map[string]struct{})
+	queue := make([]string, 0, len(knownPeers))
 	for _, peer := range knownPeers {
-		peerAddr := peer.Addr
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-			defer cancel()
-			reply, err := node.pingPeer(peerCtx, peerAddr, msg)
-			if err != nil {
-				log.Printf("failed to ping node at address %s: %v", peerAddr, err)
-				return
-			}
-			node.markPeerHealthy(peerAddr)
-			log.Printf("Pinged node %s and got a status of %d", peerAddr, reply.Status)
-		}()
+		queue = append(queue, peer.Addr)
 	}
-	wg.Wait()
+
+	for len(queue) > 0 {
+		peerAddr := queue[0]
+		queue = queue[1:]
+		if peerAddr == "" || peerAddr == node.Addr {
+			continue
+		}
+		if _, ok := visited[peerAddr]; ok {
+			continue
+		}
+		visited[peerAddr] = struct{}{}
+
+		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
+		reply, discovered, err := node.pingPeer(peerCtx, peerAddr, msg)
+		cancel()
+		if err != nil {
+			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
+			continue
+		}
+		node.markPeerHealthy(peerAddr)
+		node.mergePeerAddresses(discovered)
+		queue = append(queue, discovered...)
+		log.Printf("Pinged node %s and got a status of %d", peerAddr, reply.Status)
+	}
 }
 
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	pingReply, err := node.pingPeer(ctx, *peerAddr, message)
+	pingReply, discovered, err := node.pingPeer(ctx, *peerAddr, message)
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
 	node.markPeerHealthy(*peerAddr)
+	node.mergePeerAddresses(discovered)
 	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", *peerAddr, pingReply.Status, pingReply.Message)
 }
 
@@ -149,15 +167,22 @@ func (node *Node) setupClient(peerAddress string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-func (node *Node) pingPeer(ctx context.Context, peerAddr string, message string) (*ping.PingReply, error) {
+func (node *Node) pingPeer(ctx context.Context, peerAddr string, message string) (*ping.PingReply, []string, error) {
 	conn, err := node.setupClient(peerAddr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer conn.Close()
 
 	client := ping.NewPingServiceClient(conn)
-	return client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3))
+	ctx = metadata.AppendToOutgoingContext(ctx, selfMetadataKey, node.Addr)
+	var header metadata.MD
+	reply, err := client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3), grpc.Header(&header))
+	if err != nil {
+		return nil, nil, err
+	}
+	discovered := extractPeerAddresses(header)
+	return reply, discovered, nil
 }
 
 func sanitizeBootstrap(selfAddr string, addresses []string) []string {
@@ -211,4 +236,51 @@ func (node *Node) RemovePeer(addr string) {
 
 func (node *Node) ListPeers() []Peer {
 	return node.peers.List()
+}
+
+func (node *Node) peerAddresses() []string {
+	known := node.peers.List()
+	seen := make(map[string]struct{})
+	addrs := make([]string, 0, len(known)+1)
+	add := func(addr string) {
+		if addr == "" {
+			return
+		}
+		if _, ok := seen[addr]; ok {
+			return
+		}
+		seen[addr] = struct{}{}
+		addrs = append(addrs, addr)
+	}
+	add(node.Addr)
+	for _, peer := range known {
+		add(peer.Addr)
+	}
+	return addrs
+}
+
+func (node *Node) mergePeerAddresses(addresses []string) {
+	for _, addr := range addresses {
+		if err := node.AddPeer(addr); err != nil {
+			continue
+		}
+	}
+}
+
+func extractPeerAddresses(md metadata.MD) []string {
+	if md == nil {
+		return nil
+	}
+	values := md.Get(peerMetadataKey)
+	var addresses []string
+	for _, value := range values {
+		for _, addr := range strings.Split(value, ",") {
+			addr = strings.TrimSpace(addr)
+			if addr == "" {
+				continue
+			}
+			addresses = append(addresses, addr)
+		}
+	}
+	return addresses
 }

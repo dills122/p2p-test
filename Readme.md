@@ -55,6 +55,10 @@ Useful flags:
 - `--listener-addresses` / `-l` – known peers in `host:port` form (repeatable flag)
 - `--name` / `-n` – friendly node name (defaults to a UUID)
 
+Every ping reply carries the sender's peer list, so after a node successfully
+reaches any peer it will automatically learn about the rest of the network. The
+`--listener-addresses` flag is only needed to provide the initial bootstrap(s).
+
 ### Two-node local test
 
 Terminal 1:
