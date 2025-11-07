@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,10 +33,22 @@ var startCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		setupCloseHandler()
-		promptCtl, restoreLogging := setupPromptLogging(shellPrompt)
-		defer restoreLogging()
 		config := setupNodeConfig(cmd)
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		logFileFlag, _ := cmd.Flags().GetString("log-file")
+		logPath := resolveLogPath(config, logFileFlag)
+		promptCtl, restoreLogging := setupPromptLogging(shellPrompt, logPath, verbose)
+		defer restoreLogging()
+		fmt.Printf("Logging to %s (verbose: %t)\n", logPath, verbose)
 		activeNodeOne := node.New(config)
+		unsubscribe := activeNodeOne.Subscribe(func(evt node.Event) {
+			line := formatEvent(evt)
+			if line == "" {
+				return
+			}
+			promptCtl.PrintLine(line)
+		})
+		defer unsubscribe()
 
 		go activeNodeOne.Start()
 
@@ -46,8 +59,8 @@ var startCmd = &cobra.Command{
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			promptCtl.PrintIfNeeded()
+			promptCtl.BeginInput()
 			cmdString, err := reader.ReadString('\n')
-			promptCtl.MarkPending()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
@@ -140,6 +153,46 @@ func parsePeerAddresses(raw []string) ([]string, error) {
 	return peers, nil
 }
 
+func resolveLogPath(config node.Config, override string) string {
+	if strings.TrimSpace(override) != "" {
+		return override
+	}
+	safeAddr := strings.ReplaceAll(config.NodeAddr, ":", "_")
+	if safeAddr == "" {
+		safeAddr = strings.ReplaceAll(config.NodeName, " ", "_")
+	}
+	if safeAddr == "" {
+		safeAddr = "node"
+	}
+	return filepath.Join("logs", fmt.Sprintf("%s.log", safeAddr))
+}
+
+func formatEvent(evt node.Event) string {
+	ts := evt.Timestamp.Format("15:04:05")
+	message := strings.TrimSpace(evt.Message)
+	if message == "" {
+		message = "<empty>"
+	}
+	peer := evt.Peer
+	if peer == "" {
+		peer = "unknown"
+	}
+
+	switch evt.Type {
+	case node.EventTypeSent:
+		return fmt.Sprintf("[%s] → %s : %s", ts, peer, message)
+	case node.EventTypeRecv:
+		return fmt.Sprintf("[%s] ← %s : %s", ts, peer, message)
+	case node.EventTypeError:
+		if evt.Err != nil {
+			return fmt.Sprintf("[%s] ! %s : %v", ts, peer, evt.Err)
+		}
+		return fmt.Sprintf("[%s] ! %s", ts, peer)
+	default:
+		return fmt.Sprintf("[%s] %s", ts, message)
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(startCmd)
 
@@ -148,14 +201,40 @@ func init() {
 	startCmd.Flags().StringP("address", "a", defaultNodeAddress, "address (host:port) to bind this node to")
 	startCmd.Flags().StringP("name", "n", id.String(), "name for node")
 	startCmd.Flags().StringSliceP("listener-addresses", "l", []string{defaultListenerAddress}, "list of known relay nodes")
+	startCmd.Flags().Bool("verbose", false, "print node logs to the interactive console")
+	startCmd.Flags().String("log-file", "", "path to a log file (defaults to logs/<address>.log)")
 }
 
-func setupPromptLogging(prompt string) (*promptState, func()) {
+func setupPromptLogging(prompt string, logPath string, verbose bool) (*promptState, func()) {
 	originalWriter := log.Writer()
 	promptCtl := newPromptState(prompt, os.Stdout)
-	pWriter := newPromptWriter(promptCtl, originalWriter)
-	log.SetOutput(pWriter)
+
+	var outputs []io.Writer
+	var file *os.File
+	if logPath != "" {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create log directory: %v\n", err)
+		} else {
+			f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to open log file: %v\n", err)
+			} else {
+				file = f
+				outputs = append(outputs, f)
+			}
+		}
+	}
+
+	if verbose || len(outputs) == 0 {
+		outputs = append(outputs, newPromptWriter(promptCtl, os.Stdout))
+	}
+
+	log.SetOutput(io.MultiWriter(outputs...))
+
 	return promptCtl, func() {
+		if file != nil {
+			file.Close()
+		}
 		log.SetOutput(originalWriter)
 	}
 }
@@ -180,11 +259,11 @@ func (p *promptWriter) Write(b []byte) (int, error) {
 	if _, err := fmt.Fprint(p.state.out, "\r"); err != nil {
 		return 0, err
 	}
-	p.state.MarkPending()
+	p.state.BeginInput()
 	if _, err := p.logWriter.Write(b); err != nil {
 		return 0, err
 	}
-	p.state.PrintNow()
+	p.state.PrintPrompt()
 	return len(b), nil
 }
 
@@ -209,15 +288,23 @@ func (p *promptState) PrintIfNeeded() {
 	p.pending = false
 }
 
-func (p *promptState) PrintNow() {
+func (p *promptState) PrintPrompt() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	fmt.Fprint(p.out, p.prompt)
 	p.pending = false
 }
 
-func (p *promptState) MarkPending() {
+func (p *promptState) BeginInput() {
 	p.mu.Lock()
 	p.pending = true
 	p.mu.Unlock()
+}
+
+func (p *promptState) PrintLine(line string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprintf(p.out, "\r%s\n", line)
+	fmt.Fprint(p.out, p.prompt)
+	p.pending = false
 }

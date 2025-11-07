@@ -10,12 +10,14 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -33,8 +35,16 @@ type Service struct {
 
 func (service *Service) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
 	log.Printf("Received ping message: %s", stream.Message)
-	service.trackCaller(ctx)
+	remote := service.trackCaller(ctx)
 	service.sendPeerMetadata(ctx)
+	if service.node != nil {
+		service.node.emitEvent(Event{
+			Type:      EventTypeRecv,
+			Peer:      remote,
+			Message:   stream.Message,
+			Timestamp: time.Now(),
+		})
+	}
 	return &ping.PingReply{Message: stream.Message, Status: int32(READY)}, nil
 }
 
@@ -132,25 +142,36 @@ func (s *grpcServer) serv() {
 	}
 }
 
-func (service *Service) trackCaller(ctx context.Context) {
+func (service *Service) trackCaller(ctx context.Context) string {
 	if service.node == nil {
-		return
+		return ""
 	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return
-	}
-	addresses := md.Get(selfMetadataKey)
-	for _, addr := range addresses {
-		addr = strings.TrimSpace(addr)
-		if addr == "" {
-			continue
+	var remote string
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		addresses := md.Get(selfMetadataKey)
+		for _, addr := range addresses {
+			addr = strings.TrimSpace(addr)
+			if addr == "" {
+				continue
+			}
+			if err := service.node.AddPeer(addr); err != nil {
+				continue
+			}
+			service.node.markPeerHealthy(addr)
+			if remote == "" {
+				remote = addr
+			}
 		}
-		if err := service.node.AddPeer(addr); err != nil {
-			continue
-		}
-		service.node.markPeerHealthy(addr)
 	}
+	if remote == "" {
+		if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
+			remote = pr.Addr.String()
+			if err := service.node.AddPeer(remote); err == nil {
+				service.node.markPeerHealthy(remote)
+			}
+		}
+	}
+	return remote
 }
 
 func (service *Service) sendPeerMetadata(ctx context.Context) {

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
@@ -21,7 +22,10 @@ type Node struct {
 	Name string
 	Addr string
 
-	peers PeerRegistry
+	peers          PeerRegistry
+	listenersMu    sync.RWMutex
+	listeners      map[int]func(Event)
+	nextListenerID int
 	ping.UnimplementedPingServiceServer
 }
 
@@ -35,7 +39,19 @@ var defaultPeerAddresses = []string{
 const (
 	peerMetadataKey = "peers"
 	selfMetadataKey = "self-addr"
+	EventTypeSent   = "sent"
+	EventTypeRecv   = "received"
+	EventTypeError  = "error"
+	EventTypeInfo   = "info"
 )
+
+type Event struct {
+	Type      string
+	Peer      string
+	Message   string
+	Err       error
+	Timestamp time.Time
+}
 
 func New(config Config) *Node {
 	bootstrap := sanitizeBootstrap(config.NodeAddr, config.KnownPeerAddresses)
@@ -86,11 +102,24 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		cancel()
 		if err != nil {
 			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
+			node.emitEvent(Event{
+				Type:      EventTypeError,
+				Peer:      peerAddr,
+				Message:   msg,
+				Err:       err,
+				Timestamp: time.Now(),
+			})
 			continue
 		}
 		node.markPeerHealthy(peerAddr)
 		node.mergePeerAddresses(discovered)
 		queue = append(queue, discovered...)
+		node.emitEvent(Event{
+			Type:      EventTypeSent,
+			Peer:      peerAddr,
+			Message:   msg,
+			Timestamp: time.Now(),
+		})
 		log.Printf("Pinged node %s and got a status of %d", peerAddr, reply.Status)
 	}
 }
@@ -104,6 +133,12 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	}
 	node.markPeerHealthy(*peerAddr)
 	node.mergePeerAddresses(discovered)
+	node.emitEvent(Event{
+		Type:      EventTypeSent,
+		Peer:      *peerAddr,
+		Message:   message,
+		Timestamp: time.Now(),
+	})
 	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", *peerAddr, pingReply.Status, pingReply.Message)
 }
 
@@ -283,4 +318,28 @@ func extractPeerAddresses(md metadata.MD) []string {
 		}
 	}
 	return addresses
+}
+
+func (node *Node) Subscribe(fn func(Event)) func() {
+	node.listenersMu.Lock()
+	defer node.listenersMu.Unlock()
+	if node.listeners == nil {
+		node.listeners = make(map[int]func(Event))
+	}
+	id := node.nextListenerID
+	node.nextListenerID++
+	node.listeners[id] = fn
+	return func() {
+		node.listenersMu.Lock()
+		defer node.listenersMu.Unlock()
+		delete(node.listeners, id)
+	}
+}
+
+func (node *Node) emitEvent(evt Event) {
+	node.listenersMu.RLock()
+	defer node.listenersMu.RUnlock()
+	for _, listener := range node.listeners {
+		go listener(evt)
+	}
 }

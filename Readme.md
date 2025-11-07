@@ -54,6 +54,8 @@ Useful flags:
 - `--address` / `-a` – host:port to bind the local gRPC server (must exist on your box)
 - `--listener-addresses` / `-l` – known peers in `host:port` form (repeatable flag)
 - `--name` / `-n` – friendly node name (defaults to a UUID)
+- `--log-file` – where to write node logs (default `logs/<address>.log`)
+- `--verbose` – also stream logs to the interactive console
 
 Every ping reply carries the sender's peer list, so after a node successfully
 reaches any peer it will automatically learn about the rest of the network. The
@@ -77,9 +79,9 @@ go run ./main.go start \
   --listener-addresses 127.0.0.1:10000
 ```
 
-Now type `send hello` in Terminal 2. Terminal 2 reports it pinged
-`127.0.0.1:10000`, and Terminal 1 logs `Received ping message: hello`, showing
-the message traversed between peers. Either shell accepts:
+Now type `send hello` in Terminal 2. Both terminals print live `→` / `←`
+notifications showing who sent or received the payload, so you can watch the
+message propagate even without verbose logging enabled. Either shell accepts:
 
 - `send <message>` – ping every known peer with the provided payload
 - `add-peer <host:port>` – add new peers while the node keeps running
