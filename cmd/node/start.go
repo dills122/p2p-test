@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +17,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	defaultNodeAddress      = "127.0.0.1:10002"
+	defaultListenerAddress  = "127.0.0.1:10000"
+	sendCommandUsageMessage = "Usage: send <message>"
+)
+
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "start node with interactive shell",
@@ -23,7 +30,7 @@ var startCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		setupCloseHandler()
 		config := setupNodeConfig(cmd)
-		activeNodeOne := node.New(config.NodeName, config.NodeAddr)
+		activeNodeOne := node.New(config)
 
 		go activeNodeOne.Start()
 
@@ -53,6 +60,10 @@ func runCommand(commandStr string, node *node.Node) {
 	case "exit":
 		os.Exit(0)
 	case "send":
+		if len(commandParts) < 2 {
+			fmt.Println(sendCommandUsageMessage)
+			return
+		}
 		msg := commandParts[1]
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		node.PingAllNodes(ctx, msg)
@@ -76,18 +87,39 @@ func setupNodeConfig(cmd *cobra.Command) node.Config {
 	nodeAddress, _ := cmd.Flags().GetString("address")
 	nodeName, _ := cmd.Flags().GetString("name")
 	listenerAddressSlice, _ := cmd.Flags().GetStringSlice("listener-addresses")
-	var listenerAddress string
-	if len(listenerAddressSlice) > 0 {
-		listenerAddress = listenerAddressSlice[0]
-	} else {
-		listenerAddress = "127.0.0.1:80000"
+	peers, err := parsePeerAddresses(listenerAddressSlice)
+	if err != nil {
+		log.Fatalf("Invalid listener address: %v", err)
+	}
+	listenerAddress := defaultListenerAddress
+	if len(peers) > 0 {
+		listenerAddress = peers[0]
 	}
 	config := node.Config{
 		NodeName:                nodeName,
 		NodeAddr:                nodeAddress,
 		ServiceDiscoveryAddress: listenerAddress,
+		KnownPeerAddresses:      peers,
 	}
 	return config
+}
+
+func parsePeerAddresses(raw []string) ([]string, error) {
+	peers := make([]string, 0, len(raw))
+	for _, addr := range raw {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			continue
+		}
+		if !strings.Contains(addr, ":") {
+			return nil, fmt.Errorf("peer address %q is missing a port (expected host:port)", addr)
+		}
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			return nil, fmt.Errorf("peer address %q is invalid: %w", addr, err)
+		}
+		peers = append(peers, addr)
+	}
+	return peers, nil
 }
 
 func init() {
@@ -95,8 +127,7 @@ func init() {
 
 	id := uuid.New()
 
-	startCmd.Flags().StringP("address", "a", "", "address for node")
-	startCmd.MarkFlagRequired("address")
+	startCmd.Flags().StringP("address", "a", defaultNodeAddress, "address (host:port) to bind this node to")
 	startCmd.Flags().StringP("name", "n", id.String(), "name for node")
-	startCmd.Flags().StringSliceP("listener-addresses", "l", []string{}, "list of known rely nodes")
+	startCmd.Flags().StringSliceP("listener-addresses", "l", []string{defaultListenerAddress}, "list of known relay nodes")
 }

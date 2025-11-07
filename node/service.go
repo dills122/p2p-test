@@ -29,16 +29,17 @@ type Service struct {
 }
 
 func (service *Service) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
+	log.Printf("Received ping message: %s", stream.Message)
 	return &ping.PingReply{Message: stream.Message, Status: int32(READY)}, nil
 }
 
 func StartServer(addr string) {
-	log.Println("Started gRPC Server")
+	log.Printf("Starting gRPC Server on %s", addr)
 	builder := GrpcServerBuilder{}
 	s := builder.Build()
 	err := s.Start(addr)
 	if err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("Failed to start gRPC server on %s: %v", addr, err)
 	}
 	s.AwaitTermination(func() {
 		log.Println("Shutting down the server")

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
+	"strings"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
@@ -22,10 +24,19 @@ type Node struct {
 	ping.UnimplementedPingServiceServer
 }
 
-func New(name string, address string) Node {
-	//TODO need to fix/implement better peer/discovery system
-	staticPeerAddresses := []Peer{{Addr: "127.0.0.1:10000", Status: "unknown"}, {Addr: "127.0.0.1:10001", Status: "unknown"}, {Addr: "127.0.0.1:10002", Status: "unknown"}, {Addr: "127.0.0.1:10003", Status: "unknown"}}
-	n := Node{Name: name, Addr: address, Peers: staticPeerAddresses}
+var defaultPeerAddresses = []string{
+	"127.0.0.1:10000",
+	"127.0.0.1:10001",
+	"127.0.0.1:10002",
+	"127.0.0.1:10003",
+}
+
+func New(config Config) Node {
+	peers := buildPeers(config.NodeAddr, config.KnownPeerAddresses)
+	if len(peers) == 0 {
+		peers = buildPeers(config.NodeAddr, defaultPeerAddresses)
+	}
+	n := Node{Name: config.NodeName, Addr: config.NodeAddr, Peers: peers}
 	return n
 }
 
@@ -41,21 +52,22 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 	}
 	log.Println("Executing known peer list")
 	for _, peer := range node.Peers {
-		reply, err := node.PingNode(ctx, &ping.PingRequest{Message: msg})
+		if peer.Addr == node.Addr {
+			continue
+		}
+		reply, err := node.pingPeer(ctx, peer.Addr, msg)
 		if err != nil {
-			log.Fatalf("failed to Ping node at Address: %s", peer.Addr)
+			log.Printf("failed to ping node at address %s: %v", peer.Addr, err)
+			continue
 		}
 		log.Printf("Pinged node %s and got a status of %d", peer.Addr, reply.Status)
 	}
 }
 
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
-	conn := node.setupClient(*peerAddr)
-	client := ping.NewPingServiceClient(&conn)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	pingReply, err := client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3))
-	defer conn.Close()
 	defer cancel()
+	pingReply, err := node.pingPeer(ctx, *peerAddr, message)
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
@@ -63,8 +75,12 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 }
 
 func (node *Node) CheckIfReady() bool {
-	conn := node.setupClient(node.Addr)
-	client := grpc_health_v1.NewHealthClient(&conn)
+	conn, err := node.setupClient(node.Addr)
+	if err != nil {
+		log.Fatalf("Unable to connect to health service on %s: %v", node.Addr, err)
+	}
+	defer conn.Close()
+	client := grpc_health_v1.NewHealthClient(conn)
 	ctx := context.Background()
 	stream, err := client.Watch(ctx, &grpc_health_v1.HealthCheckRequest{})
 
@@ -100,7 +116,7 @@ func (node *Node) CheckIfReady() bool {
 // PRIVATE METHODS
 // ***************
 
-func (node *Node) setupClient(peerAddress string) grpc.ClientConn {
+func (node *Node) setupClient(peerAddress string) (*grpc.ClientConn, error) {
 	log.Printf("Creating client for node %s", peerAddress)
 	opts := []grpc_retry.CallOption{
 		grpc_retry.WithBackoff(grpc_retry.BackoffLinear(100 * time.Millisecond)),
@@ -112,8 +128,43 @@ func (node *Node) setupClient(peerAddress string) grpc.ClientConn {
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(opts...)),
 	)
 	if err != nil {
-		log.Fatalf("Unable to connect to %s: %v", peerAddress, err)
+		return nil, fmt.Errorf("unable to connect to %s: %w", peerAddress, err)
 	}
 
-	return *conn
+	return conn, nil
+}
+
+func (node *Node) pingPeer(ctx context.Context, peerAddr string, message string) (*ping.PingReply, error) {
+	conn, err := node.setupClient(peerAddr)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	client := ping.NewPingServiceClient(conn)
+	return client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3))
+}
+
+func buildPeers(selfAddr string, addresses []string) []Peer {
+	if len(addresses) == 0 {
+		return []Peer{}
+	}
+	seen := make(map[string]struct{})
+	var peers []Peer
+	for _, addr := range addresses {
+		addr = strings.TrimSpace(addr)
+		if addr == "" || addr == selfAddr {
+			continue
+		}
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			log.Printf("Skipping peer address %q: %v", addr, err)
+			continue
+		}
+		if _, ok := seen[addr]; ok {
+			continue
+		}
+		peers = append(peers, Peer{Addr: addr, Status: "unknown"})
+		seen[addr] = struct{}{}
+	}
+	return peers
 }

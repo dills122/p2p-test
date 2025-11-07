@@ -17,16 +17,18 @@ var pingTestCmd = &cobra.Command{
 			NodeName:                "node-one",
 			NodeAddr:                "127.0.0.1:10000",
 			ServiceDiscoveryAddress: "127.0.0.1:80000",
+			KnownPeerAddresses:      []string{"127.0.0.1:10001"},
 		}
-		activeNodeOne := node.New(confNodeOne.NodeName, confNodeOne.NodeAddr)
+		activeNodeOne := node.New(confNodeOne)
 		go activeNodeOne.Start()
 		fmt.Printf("Node: %s started at %s and running on %s \n", confNodeOne.NodeName, time.Now().UTC(), confNodeOne.NodeAddr)
 		confNodeTwo := node.Config{
 			NodeName:                "node-two",
 			NodeAddr:                "127.0.0.1:10001",
 			ServiceDiscoveryAddress: "127.0.0.1:80000",
+			KnownPeerAddresses:      []string{"127.0.0.1:10000"},
 		}
-		activeNodeTwo := node.New(confNodeTwo.NodeName, confNodeTwo.NodeAddr)
+		activeNodeTwo := node.New(confNodeTwo)
 		go activeNodeTwo.Start()
 		fmt.Printf("Node: %s started at %s and running on %s \n", confNodeTwo.NodeName, time.Now().UTC(), confNodeTwo.NodeAddr)
 		time.Sleep(2 * time.Second)
