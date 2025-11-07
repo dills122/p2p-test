@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +23,7 @@ const (
 	defaultNodeAddress      = "127.0.0.1:10002"
 	defaultListenerAddress  = "127.0.0.1:10000"
 	sendCommandUsageMessage = "Usage: send <message>"
+	shellPrompt             = "$ "
 )
 
 var startCmd = &cobra.Command{
@@ -29,6 +32,8 @@ var startCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		setupCloseHandler()
+		promptCtl, restoreLogging := setupPromptLogging(shellPrompt)
+		defer restoreLogging()
 		config := setupNodeConfig(cmd)
 		activeNodeOne := node.New(config)
 
@@ -40,8 +45,9 @@ var startCmd = &cobra.Command{
 		}
 		reader := bufio.NewReader(os.Stdin)
 		for {
-			fmt.Print("$ ")
+			promptCtl.PrintIfNeeded()
 			cmdString, err := reader.ReadString('\n')
+			promptCtl.MarkPending()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
@@ -130,4 +136,76 @@ func init() {
 	startCmd.Flags().StringP("address", "a", defaultNodeAddress, "address (host:port) to bind this node to")
 	startCmd.Flags().StringP("name", "n", id.String(), "name for node")
 	startCmd.Flags().StringSliceP("listener-addresses", "l", []string{defaultListenerAddress}, "list of known relay nodes")
+}
+
+func setupPromptLogging(prompt string) (*promptState, func()) {
+	originalWriter := log.Writer()
+	promptCtl := newPromptState(prompt, os.Stdout)
+	pWriter := newPromptWriter(promptCtl, originalWriter)
+	log.SetOutput(pWriter)
+	return promptCtl, func() {
+		log.SetOutput(originalWriter)
+	}
+}
+
+type promptWriter struct {
+	mu        sync.Mutex
+	state     *promptState
+	logWriter io.Writer
+}
+
+func newPromptWriter(state *promptState, logWriter io.Writer) *promptWriter {
+	return &promptWriter{
+		state:     state,
+		logWriter: logWriter,
+	}
+}
+
+func (p *promptWriter) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if _, err := fmt.Fprint(p.state.out, "\r"); err != nil {
+		return 0, err
+	}
+	p.state.MarkPending()
+	if _, err := p.logWriter.Write(b); err != nil {
+		return 0, err
+	}
+	p.state.PrintNow()
+	return len(b), nil
+}
+
+type promptState struct {
+	mu      sync.Mutex
+	prompt  string
+	out     io.Writer
+	pending bool
+}
+
+func newPromptState(prompt string, out io.Writer) *promptState {
+	return &promptState{prompt: prompt, out: out, pending: true}
+}
+
+func (p *promptState) PrintIfNeeded() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.pending {
+		return
+	}
+	fmt.Fprint(p.out, p.prompt)
+	p.pending = false
+}
+
+func (p *promptState) PrintNow() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprint(p.out, p.prompt)
+	p.pending = false
+}
+
+func (p *promptState) MarkPending() {
+	p.mu.Lock()
+	p.pending = true
+	p.mu.Unlock()
 }
