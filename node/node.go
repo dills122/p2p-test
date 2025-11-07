@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
@@ -20,7 +21,7 @@ type Node struct {
 	Name string
 	Addr string
 
-	Peers []Peer
+	peers PeerRegistry
 	ping.UnimplementedPingServiceServer
 }
 
@@ -31,12 +32,13 @@ var defaultPeerAddresses = []string{
 	"127.0.0.1:10003",
 }
 
-func New(config Config) Node {
-	peers := buildPeers(config.NodeAddr, config.KnownPeerAddresses)
-	if len(peers) == 0 {
-		peers = buildPeers(config.NodeAddr, defaultPeerAddresses)
+func New(config Config) *Node {
+	bootstrap := sanitizeBootstrap(config.NodeAddr, config.KnownPeerAddresses)
+	if len(bootstrap) == 0 {
+		bootstrap = sanitizeBootstrap(config.NodeAddr, defaultPeerAddresses)
 	}
-	n := Node{Name: config.NodeName, Addr: config.NodeAddr, Peers: peers}
+	registry := NewPeerRegistry(config.NodeAddr, bootstrap)
+	n := &Node{Name: config.NodeName, Addr: config.NodeAddr, peers: registry}
 	return n
 }
 
@@ -50,18 +52,30 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 	if len(msg) <= 0 {
 		msg = "Pinging"
 	}
-	log.Println("Executing known peer list")
-	for _, peer := range node.Peers {
-		if peer.Addr == node.Addr {
-			continue
-		}
-		reply, err := node.pingPeer(ctx, peer.Addr, msg)
-		if err != nil {
-			log.Printf("failed to ping node at address %s: %v", peer.Addr, err)
-			continue
-		}
-		log.Printf("Pinged node %s and got a status of %d", peer.Addr, reply.Status)
+	knownPeers := node.peers.List()
+	if len(knownPeers) == 0 {
+		log.Println("No known peers to ping")
+		return
 	}
+	log.Println("Executing known peer list")
+	var wg sync.WaitGroup
+	for _, peer := range knownPeers {
+		peerAddr := peer.Addr
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
+			defer cancel()
+			reply, err := node.pingPeer(peerCtx, peerAddr, msg)
+			if err != nil {
+				log.Printf("failed to ping node at address %s: %v", peerAddr, err)
+				return
+			}
+			node.markPeerHealthy(peerAddr)
+			log.Printf("Pinged node %s and got a status of %d", peerAddr, reply.Status)
+		}()
+	}
+	wg.Wait()
 }
 
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
@@ -71,6 +85,7 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
+	node.markPeerHealthy(*peerAddr)
 	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", *peerAddr, pingReply.Status, pingReply.Message)
 }
 
@@ -145,12 +160,12 @@ func (node *Node) pingPeer(ctx context.Context, peerAddr string, message string)
 	return client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3))
 }
 
-func buildPeers(selfAddr string, addresses []string) []Peer {
+func sanitizeBootstrap(selfAddr string, addresses []string) []string {
 	if len(addresses) == 0 {
-		return []Peer{}
+		return []string{}
 	}
 	seen := make(map[string]struct{})
-	var peers []Peer
+	var peers []string
 	for _, addr := range addresses {
 		addr = strings.TrimSpace(addr)
 		if addr == "" || addr == selfAddr {
@@ -163,8 +178,37 @@ func buildPeers(selfAddr string, addresses []string) []Peer {
 		if _, ok := seen[addr]; ok {
 			continue
 		}
-		peers = append(peers, Peer{Addr: addr, Status: "unknown"})
+		peers = append(peers, addr)
 		seen[addr] = struct{}{}
 	}
 	return peers
+}
+
+func (node *Node) markPeerHealthy(addr string) {
+	node.peers.UpdateStatus(addr, "online")
+	node.peers.UpdateLastSeen(addr, time.Now())
+}
+
+func (node *Node) AddPeer(addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Errorf("peer address cannot be empty")
+	}
+	if addr == node.Addr {
+		return fmt.Errorf("cannot add self (%s) as peer", addr)
+	}
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return fmt.Errorf("peer address %q is invalid: %w", addr, err)
+	}
+	node.peers.Add(addr)
+	log.Printf("Added peer %s", addr)
+	return nil
+}
+
+func (node *Node) RemovePeer(addr string) {
+	node.peers.Remove(strings.TrimSpace(addr))
+}
+
+func (node *Node) ListPeers() []Peer {
+	return node.peers.List()
 }

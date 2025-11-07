@@ -78,6 +78,8 @@ Now type `send hello` in Terminal 2. Terminal 2 reports it pinged
 the message traversed between peers. Either shell accepts:
 
 - `send <message>` – ping every known peer with the provided payload
+- `add-peer <host:port>` – add new peers while the node keeps running
+- `peers` – list known peers plus their last-seen timestamp
 - `exit` – stop the gRPC server and quit the shell
 
 If you supply an address you do not own (for example `172.0.0.1`), the OS will

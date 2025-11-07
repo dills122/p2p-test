@@ -51,7 +51,7 @@ var startCmd = &cobra.Command{
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
-			runCommand(cmdString, &activeNodeOne)
+			runCommand(cmdString, activeNodeOne)
 		}
 	},
 }
@@ -74,6 +74,18 @@ func runCommand(commandStr string, node *node.Node) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		node.PingAllNodes(ctx, msg)
 		defer cancel()
+	case "add-peer":
+		if len(commandParts) < 2 {
+			fmt.Println("Usage: add-peer <host:port>")
+			return
+		}
+		if err := node.AddPeer(strings.TrimSpace(commandParts[1])); err != nil {
+			fmt.Println(err)
+		}
+	case "peers":
+		for _, peer := range node.ListPeers() {
+			fmt.Printf("%s\t%s\t%s\n", peer.Addr, peer.Status, peer.LastSeen.Format(time.RFC3339))
+		}
 	default:
 		fmt.Println("Unknown command")
 	}
