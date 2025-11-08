@@ -41,7 +41,11 @@ var startCmd = &cobra.Command{
 		defer restoreLogging()
 		fmt.Printf("Logging to %s (verbose: %t)\n", logPath, verbose)
 		activeNodeOne := node.New(config)
+		history := newEventHistory()
 		unsubscribe := activeNodeOne.Subscribe(func(evt node.Event) {
+			if !history.ShouldDisplay(evt) {
+				return
+			}
 			line := formatEvent(evt)
 			if line == "" {
 				return
@@ -177,19 +181,23 @@ func formatEvent(evt node.Event) string {
 	if peer == "" {
 		peer = "unknown"
 	}
+	idSuffix := ""
+	if trimmed := strings.TrimSpace(evt.MessageID); trimmed != "" {
+		idSuffix = fmt.Sprintf(" #%s", trimmed)
+	}
 
 	switch evt.Type {
 	case node.EventTypeSent:
-		return fmt.Sprintf("[%s] → %s : %s", ts, peer, message)
+		return fmt.Sprintf("[%s]%s → %s : %s", ts, idSuffix, peer, message)
 	case node.EventTypeRecv:
-		return fmt.Sprintf("[%s] ← %s : %s", ts, peer, message)
+		return fmt.Sprintf("[%s]%s ← %s : %s", ts, idSuffix, peer, message)
 	case node.EventTypeError:
 		if evt.Err != nil {
-			return fmt.Sprintf("[%s] ! %s : %v", ts, peer, evt.Err)
+			return fmt.Sprintf("[%s]%s ! %s : %v", ts, idSuffix, peer, evt.Err)
 		}
-		return fmt.Sprintf("[%s] ! %s", ts, peer)
+		return fmt.Sprintf("[%s]%s ! %s", ts, idSuffix, peer)
 	default:
-		return fmt.Sprintf("[%s] %s", ts, message)
+		return fmt.Sprintf("[%s]%s %s", ts, idSuffix, message)
 	}
 }
 
@@ -307,4 +315,27 @@ func (p *promptState) PrintLine(line string) {
 	fmt.Fprintf(p.out, "\r%s\n", line)
 	fmt.Fprint(p.out, p.prompt)
 	p.pending = false
+}
+
+type eventHistory struct {
+	mu   sync.Mutex
+	seen map[string]struct{}
+}
+
+func newEventHistory() *eventHistory {
+	return &eventHistory{seen: make(map[string]struct{})}
+}
+
+func (h *eventHistory) ShouldDisplay(evt node.Event) bool {
+	messageID := strings.TrimSpace(evt.MessageID)
+	if messageID == "" {
+		return true
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.seen[messageID]; ok {
+		return false
+	}
+	h.seen[messageID] = struct{}{}
+	return true
 }

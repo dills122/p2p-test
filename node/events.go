@@ -16,6 +16,7 @@ const (
 
 type Event struct {
 	Type      EventType
+	MessageID string
 	Peer      string
 	Message   string
 	Err       error

@@ -14,7 +14,7 @@ import (
 
 type Transport interface {
 	Dial(address string) (*grpc.ClientConn, error)
-	Ping(ctx context.Context, targetAddr string, selfAddr string, message string) (*ping.PingReply, []string, error)
+	Ping(ctx context.Context, targetAddr string, selfAddr string, messageID string, message string) (*ping.PingReply, []string, error)
 }
 
 func NewGRPCTransport() Transport {
@@ -39,7 +39,7 @@ func (t *grpcTransport) Dial(address string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-func (t *grpcTransport) Ping(ctx context.Context, targetAddr string, selfAddr string, message string) (*ping.PingReply, []string, error) {
+func (t *grpcTransport) Ping(ctx context.Context, targetAddr string, selfAddr string, messageID string, message string) (*ping.PingReply, []string, error) {
 	conn, err := t.Dial(targetAddr)
 	if err != nil {
 		return nil, nil, err
@@ -48,6 +48,9 @@ func (t *grpcTransport) Ping(ctx context.Context, targetAddr string, selfAddr st
 
 	client := ping.NewPingServiceClient(conn)
 	ctx = metadata.AppendToOutgoingContext(ctx, selfMetadataKey, selfAddr)
+	if strings.TrimSpace(messageID) != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, messageIDMetadataKey, messageID)
+	}
 	var header metadata.MD
 	reply, err := client.PingNode(ctx, &ping.PingRequest{Message: message}, grpc_retry.WithMax(3), grpc.Header(&header))
 	if err != nil {

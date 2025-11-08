@@ -10,6 +10,7 @@ import (
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
+	"github.com/google/uuid"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -30,8 +31,9 @@ var defaultPeerAddresses = []string{
 }
 
 const (
-	peerMetadataKey = "peers"
-	selfMetadataKey = "self-addr"
+	peerMetadataKey      = "peers"
+	selfMetadataKey      = "self-addr"
+	messageIDMetadataKey = "message-id"
 )
 
 func New(config Config) *Node {
@@ -60,6 +62,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 	if len(msg) <= 0 {
 		msg = "Pinging"
 	}
+	messageID := uuid.NewString()
 	knownPeers := node.peers.List()
 	if len(knownPeers) == 0 {
 		log.Println("No known peers to ping")
@@ -85,12 +88,13 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		visited[peerAddr] = struct{}{}
 
 		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, msg)
+		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, messageID, msg)
 		cancel()
 		if err != nil {
 			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
 			node.emitEvent(Event{
 				Type:      EventTypeError,
+				MessageID: messageID,
 				Peer:      peerAddr,
 				Message:   msg,
 				Err:       err,
@@ -103,6 +107,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		queue = append(queue, discovered...)
 		node.emitEvent(Event{
 			Type:      EventTypeSent,
+			MessageID: messageID,
 			Peer:      peerAddr,
 			Message:   msg,
 			Timestamp: time.Now(),
@@ -114,7 +119,8 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	pingReply, discovered, err := node.transport.Ping(ctx, *peerAddr, node.Addr, message)
+	messageID := uuid.NewString()
+	pingReply, discovered, err := node.transport.Ping(ctx, *peerAddr, node.Addr, messageID, message)
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
@@ -122,6 +128,7 @@ func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	node.mergePeerAddresses(discovered)
 	node.emitEvent(Event{
 		Type:      EventTypeSent,
+		MessageID: messageID,
 		Peer:      *peerAddr,
 		Message:   message,
 		Timestamp: time.Now(),

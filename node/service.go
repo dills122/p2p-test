@@ -35,11 +35,12 @@ type Service struct {
 
 func (service *Service) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
 	log.Printf("Received ping message: %s", stream.Message)
-	remote := service.trackCaller(ctx)
+	remote, messageID := service.trackCaller(ctx)
 	service.sendPeerMetadata(ctx)
 	if service.node != nil {
 		service.node.emitEvent(Event{
 			Type:      EventTypeRecv,
+			MessageID: messageID,
 			Peer:      remote,
 			Message:   stream.Message,
 			Timestamp: time.Now(),
@@ -142,12 +143,23 @@ func (s *grpcServer) serv() {
 	}
 }
 
-func (service *Service) trackCaller(ctx context.Context) string {
+func (service *Service) trackCaller(ctx context.Context) (string, string) {
 	if service.node == nil {
-		return ""
+		return "", ""
 	}
 	var remote string
+	var messageID string
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if ids := md.Get(messageIDMetadataKey); len(ids) > 0 {
+			for _, id := range ids {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					continue
+				}
+				messageID = id
+				break
+			}
+		}
 		addresses := md.Get(selfMetadataKey)
 		for _, addr := range addresses {
 			addr = strings.TrimSpace(addr)
@@ -171,7 +183,7 @@ func (service *Service) trackCaller(ctx context.Context) string {
 			}
 		}
 	}
-	return remote
+	return remote, messageID
 }
 
 func (service *Service) sendPeerMetadata(ctx context.Context) {
