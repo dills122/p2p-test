@@ -77,11 +77,7 @@ type GrpcServer interface {
 }
 
 type GrpcServerBuilder struct {
-	options                   []grpc.ServerOption
-	enabledReflection         bool
-	shutdownHook              func()
-	enabledHealthCheck        bool
-	disableDefaultHealthCheck bool
+	options []grpc.ServerOption
 }
 
 type grpcServer struct {
