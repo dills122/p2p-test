@@ -3,6 +3,8 @@
 Small playground for experimenting with peer-to-peer style messaging using Go,
 gRPC, and a simple CLI.
 
+![Example with 3 nodes](./assets/3-node-example.gif)
+
 ## Requirements
 
 - Go 1.17+
@@ -27,10 +29,10 @@ protoc --go_out=plugins=grpc:. --go_opt=paths=source_relative pkg/ping/ping.prot
 go run ./main.go --help
 ```
 
-| Command                | Description                                              |
-|------------------------|----------------------------------------------------------|
-| `pingTest`             | Spins up two demo nodes, has them ping one another, exits|
-| `start`                | Starts a node plus interactive shell (`send`, `exit`)    |
+| Command    | Description                                               |
+| ---------- | --------------------------------------------------------- |
+| `pingTest` | Spins up two demo nodes, has them ping one another, exits |
+| `start`    | Starts a node plus interactive shell (`send`, `exit`)     |
 
 ## Quick demo (ping test)
 
