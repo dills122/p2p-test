@@ -4,4 +4,5 @@ type Config struct {
 	NodeName                string
 	NodeAddr                string
 	ServiceDiscoveryAddress string
+	KnownPeerAddresses      []string
 }
