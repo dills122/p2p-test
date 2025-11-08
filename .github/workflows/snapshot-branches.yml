@@ -1,0 +1,49 @@
+name: Create Snapshot Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_name:
+        description: "Name of the snapshot (ex: tutorial-part-3 or 2025-11-07)"
+        required: true
+        type: string
+      create_tag:
+        description: "Also create a tag? (true/false)"
+        required: false
+        default: "false"
+        type: string
+
+jobs:
+  create_snapshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set snapshot variables
+        run: |
+          SNAPSHOT_BRANCH="snapshot/${{ github.event.inputs.snapshot_name }}"
+          echo "SNAPSHOT_BRANCH=$SNAPSHOT_BRANCH" >> $GITHUB_ENV
+
+      - name: Create snapshot branch
+        run: |
+          git checkout -b "$SNAPSHOT_BRANCH"
+          git push origin "$SNAPSHOT_BRANCH"
+
+      - name: Optionally create tag
+        if: ${{ github.event.inputs.create_tag == 'true' }}
+        run: |
+          TAG_NAME="${{ github.event.inputs.snapshot_name }}"
+          git tag -a "$TAG_NAME" -m "Snapshot: $TAG_NAME"
+          git push origin "$TAG_NAME"
+
+      - name: Success Output
+        run: |
+          echo "✅ Snapshot created:"
+          echo "   Branch: $SNAPSHOT_BRANCH"
+          if [ "${{ github.event.inputs.create_tag }}" = "true" ]; then
+            echo "   Tag: $TAG_NAME"
+          fi
