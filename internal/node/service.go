@@ -36,10 +36,18 @@ type Service struct {
 }
 
 func (service *Service) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
+	start := time.Now()
 	log.Printf("Received ping message: %s", stream.Message)
 	remote, envelope := service.trackCaller(ctx, stream.Message)
 	if service.node != nil {
 		if err := service.node.acceptIncomingEnvelope(envelope); err != nil {
+			logNetworkEvent("ping_recv", map[string]string{
+				"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+				"msg_id":     envelope.ID,
+				"msg_type":   string(envelope.Type),
+				"peer":       remote,
+				"result":     "dropped",
+			})
 			log.Printf("Dropping ping from %s (id=%s): %v", remote, envelope.ID, err)
 			return &ping.PingReply{Message: stream.Message, Status: int32(OFFLINE)}, nil
 		}
@@ -54,6 +62,14 @@ func (service *Service) PingNode(ctx context.Context, stream *ping.PingRequest) 
 			Timestamp: time.Now(),
 		})
 	}
+	logNetworkEvent("ping_recv", map[string]string{
+		"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+		"msg_id":     envelope.ID,
+		"msg_type":   string(envelope.Type),
+		"peer":       remote,
+		"result":     "ok",
+		"status":     fmt.Sprintf("%d", READY),
+	})
 	return &ping.PingReply{Message: stream.Message, Status: int32(READY)}, nil
 }
 

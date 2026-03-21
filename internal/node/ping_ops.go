@@ -42,11 +42,19 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 			continue
 		}
 		visited[peerAddr] = struct{}{}
+		start := time.Now()
 
 		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
 		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, envelope, msg)
 		cancel()
 		if err != nil {
+			logNetworkEvent("ping_send", map[string]string{
+				"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+				"msg_id":     messageID,
+				"msg_type":   string(envelope.Type),
+				"peer":       peerAddr,
+				"result":     "error",
+			})
 			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
 			node.emitEvent(Event{
 				Type:      EventTypeError,
@@ -68,6 +76,14 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 			Message:   msg,
 			Timestamp: time.Now(),
 		})
+		logNetworkEvent("ping_send", map[string]string{
+			"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+			"msg_id":     messageID,
+			"msg_type":   string(envelope.Type),
+			"peer":       peerAddr,
+			"result":     "ok",
+			"status":     fmt.Sprintf("%d", reply.Status),
+		})
 		log.Printf("Pinged node %s and got a status of %d", peerAddr, reply.Status)
 	}
 }
@@ -80,8 +96,16 @@ func (node *Node) PingOtherNode(peerAddr string, message string) error {
 		return fmt.Errorf("build ping envelope: %w", err)
 	}
 	messageID := envelope.ID
+	start := time.Now()
 	pingReply, discovered, err := node.transport.Ping(ctx, peerAddr, node.Addr, envelope, message)
 	if err != nil {
+		logNetworkEvent("ping_send", map[string]string{
+			"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+			"msg_id":     messageID,
+			"msg_type":   string(envelope.Type),
+			"peer":       peerAddr,
+			"result":     "error",
+		})
 		return fmt.Errorf("get status ping: %w", err)
 	}
 	node.markPeerHealthy(peerAddr)
@@ -92,6 +116,14 @@ func (node *Node) PingOtherNode(peerAddr string, message string) error {
 		Peer:      peerAddr,
 		Message:   message,
 		Timestamp: time.Now(),
+	})
+	logNetworkEvent("ping_send", map[string]string{
+		"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+		"msg_id":     messageID,
+		"msg_type":   string(envelope.Type),
+		"peer":       peerAddr,
+		"result":     "ok",
+		"status":     fmt.Sprintf("%d", pingReply.Status),
 	})
 	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", peerAddr, pingReply.Status, pingReply.Message)
 	return nil
