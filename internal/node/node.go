@@ -10,6 +10,7 @@ import (
 type Node struct {
 	Name      string
 	Addr      string
+	maxPeers  int
 	peers     PeerRegistry
 	events    *eventBus
 	transport Transport
@@ -18,6 +19,7 @@ type Node struct {
 }
 
 const (
+	defaultMaxPeers            = 256
 	peerMetadataKey            = "peers"
 	selfMetadataKey            = "self-addr"
 	messageIDMetadataKey       = "message-id"
@@ -32,13 +34,25 @@ func New(config Config) *Node {
 	if len(bootstrap) == 0 {
 		bootstrap = sanitizeBootstrap(config.NodeAddr, defaultPeerAddresses)
 	}
+	transport, err := resolveTransport(config.Transport)
+	if err != nil {
+		log.Printf("invalid transport %q, defaulting to %s: %v", config.Transport, TransportGRPC, err)
+		transport = NewGRPCTransport()
+	}
+
+	maxPeers := config.MaxPeers
+	if maxPeers <= 0 {
+		maxPeers = defaultMaxPeers
+	}
+
 	registry := NewPeerRegistry(config.NodeAddr, bootstrap)
 	n := &Node{
 		Name:      config.NodeName,
 		Addr:      config.NodeAddr,
+		maxPeers:  maxPeers,
 		peers:     registry,
 		events:    newEventBus(),
-		transport: NewGRPCTransport(),
+		transport: transport,
 		seen:      newMessageGuard(5 * time.Minute),
 	}
 	return n

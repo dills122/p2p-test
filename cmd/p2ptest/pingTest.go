@@ -17,6 +17,7 @@ var pingTestCmd = &cobra.Command{
 		confNodeOne := node.Config{
 			NodeName:                "node-one",
 			NodeAddr:                "127.0.0.1:10000",
+			Transport:               node.TransportGRPC,
 			ServiceDiscoveryAddress: "127.0.0.1:10000",
 			KnownPeerAddresses:      []string{"127.0.0.1:10001"},
 		}
@@ -26,6 +27,7 @@ var pingTestCmd = &cobra.Command{
 		confNodeTwo := node.Config{
 			NodeName:                "node-two",
 			NodeAddr:                "127.0.0.1:10001",
+			Transport:               node.TransportGRPC,
 			ServiceDiscoveryAddress: "127.0.0.1:10001",
 			KnownPeerAddresses:      []string{"127.0.0.1:10000"},
 		}

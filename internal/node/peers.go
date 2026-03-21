@@ -66,6 +66,12 @@ func (node *Node) AddPeer(addr string) error {
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		return fmt.Errorf("peer address %q is invalid: %w", addr, err)
 	}
+	if _, exists := node.peers.Get(addr); exists {
+		return nil
+	}
+	if len(node.peers.List()) >= node.maxPeers {
+		return fmt.Errorf("peer limit reached (%d), rejecting %s", node.maxPeers, addr)
+	}
 	node.peers.Add(addr)
 	log.Printf("Added peer %s", addr)
 	return nil

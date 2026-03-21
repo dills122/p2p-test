@@ -56,6 +56,9 @@ Useful flags:
 - `--address` / `-a` – host:port to bind the local gRPC server (must exist on your box)
 - `--listener-addresses` / `-l` – known peers in `host:port` form (repeatable flag)
 - `--name` / `-n` – friendly node name (defaults to a UUID)
+- `--transport` – transport backend (`grpc` or `libp2p`; `libp2p` is scaffolded and not yet implemented)
+- `--max-peers` – maximum number of peers kept in the in-memory registry
+- `--discovery-interval` – periodic discovery sweep interval (`0` disables background sweeps)
 - `--log-file` – where to write node logs (default `logs/<address>.log`)
 - `--verbose` – also stream logs to the interactive console
 
