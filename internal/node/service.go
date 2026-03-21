@@ -8,11 +8,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
+	"github.com/dills122/p2p-test/pkg/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -34,18 +36,40 @@ type Service struct {
 }
 
 func (service *Service) PingNode(ctx context.Context, stream *ping.PingRequest) (*ping.PingReply, error) {
+	start := time.Now()
 	log.Printf("Received ping message: %s", stream.Message)
-	remote, messageID := service.trackCaller(ctx)
+	remote, envelope := service.trackCaller(ctx, stream.Message)
+	if service.node != nil {
+		if err := service.node.acceptIncomingEnvelope(envelope); err != nil {
+			logNetworkEvent("ping_recv", map[string]string{
+				"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+				"msg_id":     envelope.ID,
+				"msg_type":   string(envelope.Type),
+				"peer":       remote,
+				"result":     "dropped",
+			})
+			log.Printf("Dropping ping from %s (id=%s): %v", remote, envelope.ID, err)
+			return &ping.PingReply{Message: stream.Message, Status: int32(OFFLINE)}, nil
+		}
+	}
 	service.sendPeerMetadata(ctx)
 	if service.node != nil {
 		service.node.emitEvent(Event{
 			Type:      EventTypeRecv,
-			MessageID: messageID,
+			MessageID: envelope.ID,
 			Peer:      remote,
 			Message:   stream.Message,
 			Timestamp: time.Now(),
 		})
 	}
+	logNetworkEvent("ping_recv", map[string]string{
+		"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
+		"msg_id":     envelope.ID,
+		"msg_type":   string(envelope.Type),
+		"peer":       remote,
+		"result":     "ok",
+		"status":     fmt.Sprintf("%d", READY),
+	})
 	return &ping.PingReply{Message: stream.Message, Status: int32(READY)}, nil
 }
 
@@ -139,23 +163,14 @@ func (s *grpcServer) serv() {
 	}
 }
 
-func (service *Service) trackCaller(ctx context.Context) (string, string) {
+func (service *Service) trackCaller(ctx context.Context, message string) (string, protocol.Envelope) {
+	env := protocol.NewEnvelope(protocol.MessageTypePing, "unknown", []byte(message), protocol.DefaultTTL)
 	if service.node == nil {
-		return "", ""
+		return "", env
 	}
 	var remote string
-	var messageID string
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if ids := md.Get(messageIDMetadataKey); len(ids) > 0 {
-			for _, id := range ids {
-				id = strings.TrimSpace(id)
-				if id == "" {
-					continue
-				}
-				messageID = id
-				break
-			}
-		}
+		setEnvelopeMetadata(&env, md)
 		addresses := md.Get(selfMetadataKey)
 		for _, addr := range addresses {
 			addr = strings.TrimSpace(addr)
@@ -165,7 +180,7 @@ func (service *Service) trackCaller(ctx context.Context) (string, string) {
 			if err := service.node.AddPeer(addr); err != nil {
 				continue
 			}
-			service.node.markPeerHealthy(addr)
+			service.node.markPeerHealthy(addr, 0)
 			if remote == "" {
 				remote = addr
 			}
@@ -175,11 +190,14 @@ func (service *Service) trackCaller(ctx context.Context) (string, string) {
 		if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
 			remote = pr.Addr.String()
 			if err := service.node.AddPeer(remote); err == nil {
-				service.node.markPeerHealthy(remote)
+				service.node.markPeerHealthy(remote, 0)
 			}
 		}
 	}
-	return remote, messageID
+	if remote != "" {
+		env.Origin = remote
+	}
+	return remote, env
 }
 
 func (service *Service) sendPeerMetadata(ctx context.Context) {
@@ -191,7 +209,51 @@ func (service *Service) sendPeerMetadata(ctx context.Context) {
 		return
 	}
 	value := strings.Join(peers, ",")
-	if err := grpc.SetHeader(ctx, metadata.Pairs(peerMetadataKey, value)); err != nil {
+	headers := []string{peerMetadataKey, value}
+	if payload, signature, pubKey, err := buildSignedPeerAnnounce(service.node.Addr, peers, service.node.privKey); err == nil {
+		headers = append(headers,
+			peerAnnouncePayloadKey, payload,
+			peerAnnounceSignatureKey, signature,
+			peerAnnouncePubKeyKey, pubKey,
+		)
+	}
+	if err := grpc.SetHeader(ctx, metadata.Pairs(headers...)); err != nil {
 		log.Printf("failed to send peer metadata: %v", err)
 	}
+}
+
+func setEnvelopeMetadata(env *protocol.Envelope, md metadata.MD) {
+	if env == nil || md == nil {
+		return
+	}
+	if version := firstMetadataValue(md, protocolVersionMetadataKey); version != "" {
+		env.Version = version
+	}
+	if messageID := firstMetadataValue(md, messageIDMetadataKey); messageID != "" {
+		env.ID = messageID
+	}
+	if messageType := firstMetadataValue(md, messageTypeMetadataKey); messageType != "" {
+		env.Type = protocol.MessageType(messageType)
+	}
+	if ttlRaw := firstMetadataValue(md, ttlMetadataKey); ttlRaw != "" {
+		if ttl, err := strconv.Atoi(ttlRaw); err == nil {
+			env.TTL = ttl
+		}
+	}
+	if hopRaw := firstMetadataValue(md, hopCountMetadataKey); hopRaw != "" {
+		if hopCount, err := strconv.Atoi(hopRaw); err == nil {
+			env.HopCount = hopCount
+		}
+	}
+}
+
+func firstMetadataValue(md metadata.MD, key string) string {
+	values := md.Get(key)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

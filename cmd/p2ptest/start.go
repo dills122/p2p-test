@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dills122/p2p-test/node"
+	"github.com/dills122/p2p-test/internal/node"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +23,9 @@ import (
 const (
 	defaultNodeAddress      = "127.0.0.1:10002"
 	defaultListenerAddress  = "127.0.0.1:10000"
+	defaultTransport        = node.TransportGRPC
+	defaultMaxPeers         = 256
+	defaultDiscoverySweep   = 30 * time.Second
 	sendCommandUsageMessage = "Usage: send <message>"
 	shellPrompt             = "$ "
 )
@@ -56,17 +59,27 @@ var startCmd = &cobra.Command{
 
 		go activeNodeOne.Start()
 
-		isReady := activeNodeOne.CheckIfReady()
-		if !isReady {
-			log.Fatalf("Error when checking status of server")
+		isReady, err := activeNodeOne.CheckIfReady()
+		if err != nil {
+			log.Fatalf("Error when checking status of server: %v", err)
 		}
+		if !isReady {
+			log.Fatalf("Node is not ready")
+		}
+		stopDiscovery := activeNodeOne.StartDiscoveryLoop(config.DiscoveryInterval)
+		defer stopDiscovery()
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			promptCtl.PrintIfNeeded()
 			promptCtl.BeginInput()
 			cmdString, err := reader.ReadString('\n')
 			if err != nil {
+				if err == io.EOF {
+					fmt.Println("Exiting interactive console")
+					return
+				}
 				fmt.Fprintln(os.Stderr, err)
+				continue
 			}
 			runCommand(cmdString, activeNodeOne)
 		}
@@ -101,7 +114,19 @@ func runCommand(commandStr string, node *node.Node) {
 		}
 	case "peers":
 		for _, peer := range node.ListPeers() {
-			fmt.Printf("%s\t%s\t%s\n", peer.Addr, peer.Status, peer.LastSeen.Format(time.RFC3339))
+			cooldown := "-"
+			if !peer.CooldownUntil.IsZero() {
+				cooldown = peer.CooldownUntil.Format(time.RFC3339)
+			}
+			fmt.Printf("%s\t%s\t%s\tscore=%d\tfailures=%d\trtt=%s\tcooldown=%s\n",
+				peer.Addr,
+				peer.Status,
+				peer.LastSeen.Format(time.RFC3339),
+				peer.Score,
+				peer.Failures,
+				peer.LastRTT.String(),
+				cooldown,
+			)
 		}
 	default:
 		fmt.Println("Unknown command")
@@ -109,7 +134,7 @@ func runCommand(commandStr string, node *node.Node) {
 }
 
 func setupCloseHandler() {
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
@@ -121,10 +146,16 @@ func setupCloseHandler() {
 func setupNodeConfig(cmd *cobra.Command) node.Config {
 	nodeAddress, _ := cmd.Flags().GetString("address")
 	nodeName, _ := cmd.Flags().GetString("name")
+	transport, _ := cmd.Flags().GetString("transport")
+	maxPeers, _ := cmd.Flags().GetInt("max-peers")
+	discoveryInterval, _ := cmd.Flags().GetDuration("discovery-interval")
 	listenerAddressSlice, _ := cmd.Flags().GetStringSlice("listener-addresses")
 	peers, err := parsePeerAddresses(listenerAddressSlice)
 	if err != nil {
 		log.Fatalf("Invalid listener address: %v", err)
+	}
+	if _, err := node.ResolveTransportForConfig(transport); err != nil {
+		log.Fatalf("Invalid transport: %v", err)
 	}
 	listenerAddress := defaultListenerAddress
 	if len(peers) > 0 {
@@ -133,6 +164,9 @@ func setupNodeConfig(cmd *cobra.Command) node.Config {
 	config := node.Config{
 		NodeName:                nodeName,
 		NodeAddr:                nodeAddress,
+		Transport:               transport,
+		MaxPeers:                maxPeers,
+		DiscoveryInterval:       discoveryInterval,
 		ServiceDiscoveryAddress: listenerAddress,
 		KnownPeerAddresses:      peers,
 	}
@@ -208,6 +242,9 @@ func init() {
 
 	startCmd.Flags().StringP("address", "a", defaultNodeAddress, "address (host:port) to bind this node to")
 	startCmd.Flags().StringP("name", "n", id.String(), "name for node")
+	startCmd.Flags().String("transport", defaultTransport, "transport backend (grpc|libp2p)")
+	startCmd.Flags().Int("max-peers", defaultMaxPeers, "maximum number of peers to track")
+	startCmd.Flags().Duration("discovery-interval", defaultDiscoverySweep, "periodic peer discovery sweep interval (0 to disable)")
 	startCmd.Flags().StringSliceP("listener-addresses", "l", []string{defaultListenerAddress}, "list of known relay nodes")
 	startCmd.Flags().Bool("verbose", false, "print node logs to the interactive console")
 	startCmd.Flags().String("log-file", "", "path to a log file (defaults to logs/<address>.log)")

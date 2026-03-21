@@ -33,6 +33,7 @@ go run ./main.go --help
 | ---------- | --------------------------------------------------------- |
 | `pingTest` | Spins up two demo nodes, has them ping one another, exits |
 | `start`    | Starts a node plus interactive shell (`send`, `exit`)     |
+| `demoRetail` | Runs a scripted multi-node payment-network scenario      |
 
 ## Quick demo (ping test)
 
@@ -42,6 +43,22 @@ go run ./main.go pingTest
 
 This launches nodes on `127.0.0.1:10000` and `127.0.0.1:10001`, waits briefly,
 then has each node ping the other.
+
+## Real-world style demo
+
+Run a scripted payment-network scenario:
+
+```bash
+go run ./main.go demoRetail --base-port 12000 --transport grpc
+```
+
+The demo creates nodes for storefront, gateway, risk, and settlement, then:
+
+- bootstraps message flow,
+- broadcasts a transaction event,
+- simulates an unreachable endpoint to show backoff/cooldown behavior,
+- starts a late-joining analytics node and reconciles peer discovery,
+- prints peer health snapshots.
 
 ## Interactive shell
 
@@ -56,6 +73,9 @@ Useful flags:
 - `--address` / `-a` – host:port to bind the local gRPC server (must exist on your box)
 - `--listener-addresses` / `-l` – known peers in `host:port` form (repeatable flag)
 - `--name` / `-n` – friendly node name (defaults to a UUID)
+- `--transport` – transport backend (`grpc` or `libp2p`; `libp2p` is scaffolded and not yet implemented)
+- `--max-peers` – maximum number of peers kept in the in-memory registry
+- `--discovery-interval` – periodic discovery sweep interval (`0` disables background sweeps)
 - `--log-file` – where to write node logs (default `logs/<address>.log`)
 - `--verbose` – also stream logs to the interactive console
 
