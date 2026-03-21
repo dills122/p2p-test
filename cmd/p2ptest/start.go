@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dills122/p2p-test/node"
+	"github.com/dills122/p2p-test/internal/node"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )

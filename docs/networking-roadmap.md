@@ -5,18 +5,18 @@
 ### What exists today
 
 - CLI entrypoint and commands:
-  - `p2p-test start` launches a node and interactive shell (`send`, `add-peer`, `peers`, `exit`) in [`cmd/node/start.go`](/Users/dsteele/go/src/p2p-test/cmd/node/start.go)
-  - `p2p-test pingTest` starts two nodes and sends one ping each in [`cmd/node/pingTest.go`](/Users/dsteele/go/src/p2p-test/cmd/node/pingTest.go)
+  - `p2p-test start` launches a node and interactive shell (`send`, `add-peer`, `peers`, `exit`) in [`cmd/p2ptest/start.go`](/Users/dsteele/go/src/p2p-test/cmd/p2ptest/start.go)
+  - `p2p-test pingTest` starts two nodes and sends one ping each in [`cmd/p2ptest/pingTest.go`](/Users/dsteele/go/src/p2p-test/cmd/p2ptest/pingTest.go)
 - Core node runtime:
-  - Node construction and transport wiring in [`node/node.go`](/Users/dsteele/go/src/p2p-test/node/node.go)
-  - gRPC server and ping handler in [`node/service.go`](/Users/dsteele/go/src/p2p-test/node/service.go)
-  - outbound ping fanout + peer discovery via metadata in [`node/ping_ops.go`](/Users/dsteele/go/src/p2p-test/node/ping_ops.go)
-  - in-memory peer registry with status/last-seen in [`node/registry.go`](/Users/dsteele/go/src/p2p-test/node/registry.go)
+  - Node construction and transport wiring in [`internal/node/node.go`](/Users/dsteele/go/src/p2p-test/internal/node/node.go)
+  - gRPC server and ping handler in [`internal/node/service.go`](/Users/dsteele/go/src/p2p-test/internal/node/service.go)
+  - outbound ping fanout + peer discovery via metadata in [`internal/node/ping_ops.go`](/Users/dsteele/go/src/p2p-test/internal/node/ping_ops.go)
+  - in-memory peer registry with status/last-seen in [`internal/node/registry.go`](/Users/dsteele/go/src/p2p-test/internal/node/registry.go)
 - Transport abstraction:
-  - `Transport` interface exists and gRPC implementation is isolated in [`node/transport.go`](/Users/dsteele/go/src/p2p-test/node/transport.go)
+  - `Transport` interface exists and gRPC implementation is isolated in [`internal/node/transport.go`](/Users/dsteele/go/src/p2p-test/internal/node/transport.go)
 - Event stream for UI/logging:
-  - async event bus in [`node/events.go`](/Users/dsteele/go/src/p2p-test/node/events.go)
-  - shell event rendering and de-dup display behavior in [`cmd/node/start.go`](/Users/dsteele/go/src/p2p-test/cmd/node/start.go)
+  - async event bus in [`internal/node/events.go`](/Users/dsteele/go/src/p2p-test/internal/node/events.go)
+  - shell event rendering and de-dup display behavior in [`cmd/p2ptest/start.go`](/Users/dsteele/go/src/p2p-test/cmd/p2ptest/start.go)
 - Dependency status:
   - project builds with `go test ./...` and has no tests yet.
 

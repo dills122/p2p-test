@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dills122/p2p-test/node"
+	"github.com/dills122/p2p-test/internal/node"
 	"github.com/spf13/cobra"
 )
 
