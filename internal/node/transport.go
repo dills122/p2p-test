@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -16,7 +17,7 @@ import (
 
 type Transport interface {
 	Dial(address string) (*grpc.ClientConn, error)
-	Ping(ctx context.Context, targetAddr string, selfAddr string, envelope protocol.Envelope, message string) (*ping.PingReply, []string, error)
+	Ping(ctx context.Context, targetAddr string, selfAddr string, selfPubKey string, envelope protocol.Envelope, message string) (*ping.PingReply, []string, error)
 }
 
 func NewGRPCTransport() Transport {
@@ -41,7 +42,7 @@ func (t *grpcTransport) Dial(address string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-func (t *grpcTransport) Ping(ctx context.Context, targetAddr string, selfAddr string, envelope protocol.Envelope, message string) (*ping.PingReply, []string, error) {
+func (t *grpcTransport) Ping(ctx context.Context, targetAddr string, selfAddr string, selfPubKey string, envelope protocol.Envelope, message string) (*ping.PingReply, []string, error) {
 	conn, err := t.Dial(targetAddr)
 	if err != nil {
 		return nil, nil, err
@@ -50,6 +51,9 @@ func (t *grpcTransport) Ping(ctx context.Context, targetAddr string, selfAddr st
 
 	client := ping.NewPingServiceClient(conn)
 	ctx = metadata.AppendToOutgoingContext(ctx, selfMetadataKey, selfAddr)
+	if strings.TrimSpace(selfPubKey) != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, selfPublicKeyMetadataKey, selfPubKey)
+	}
 	if strings.TrimSpace(envelope.ID) != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, messageIDMetadataKey, envelope.ID)
 	}
@@ -69,6 +73,17 @@ func extractPeerAddresses(md metadata.MD) []string {
 	if md == nil {
 		return nil
 	}
+	announcePayload := firstHeaderValue(md, peerAnnouncePayloadKey)
+	announceSignature := firstHeaderValue(md, peerAnnounceSignatureKey)
+	announcePubKey := firstHeaderValue(md, peerAnnouncePubKeyKey)
+	if announcePayload != "" && announceSignature != "" && announcePubKey != "" {
+		announce, err := verifySignedPeerAnnounce(announcePayload, announceSignature, announcePubKey)
+		if err == nil {
+			return announce.Peers
+		}
+		log.Printf("ignoring untrusted peer announce: %v", err)
+	}
+
 	values := md.Get(peerMetadataKey)
 	var addresses []string
 	for _, value := range values {
@@ -81,4 +96,15 @@ func extractPeerAddresses(md metadata.MD) []string {
 		}
 	}
 	return addresses
+}
+
+func firstHeaderValue(md metadata.MD, key string) string {
+	values := md.Get(key)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

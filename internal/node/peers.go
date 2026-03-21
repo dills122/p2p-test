@@ -55,6 +55,20 @@ func (node *Node) canAttemptPeer(addr string) (bool, time.Duration) {
 	return false, remaining
 }
 
+func (node *Node) isTrustedDiscoverySource(addr string) bool {
+	peer, ok := node.peers.Get(strings.TrimSpace(addr))
+	if !ok {
+		return false
+	}
+	if peer.Status != "online" {
+		return false
+	}
+	if peer.Failures > 0 {
+		return false
+	}
+	return true
+}
+
 func (node *Node) AddPeer(addr string) error {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {

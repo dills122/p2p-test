@@ -19,9 +19,10 @@ func (t *libp2pTransport) Dial(address string) (*grpc.ClientConn, error) {
 	return nil, fmt.Errorf("libp2p transport Dial is not implemented yet (address=%s)", address)
 }
 
-func (t *libp2pTransport) Ping(ctx context.Context, targetAddr string, selfAddr string, envelope protocol.Envelope, message string) (*ping.PingReply, []string, error) {
+func (t *libp2pTransport) Ping(ctx context.Context, targetAddr string, selfAddr string, selfPubKey string, envelope protocol.Envelope, message string) (*ping.PingReply, []string, error) {
 	_ = ctx
 	_ = selfAddr
+	_ = selfPubKey
 	_ = envelope
 	_ = message
 	return nil, nil, fmt.Errorf("libp2p transport Ping is not implemented yet (target=%s)", targetAddr)

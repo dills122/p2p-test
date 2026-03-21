@@ -55,7 +55,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		start := time.Now()
 
 		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, envelope, msg)
+		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, node.publicKeyBase64(), envelope, msg)
 		cancel()
 		if err != nil {
 			backoff := node.markPeerFailure(peerAddr)
@@ -79,7 +79,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 			continue
 		}
 		node.markPeerHealthy(peerAddr, time.Since(start))
-		node.mergePeerAddresses(discovered)
+		node.mergeDiscoveredPeerAddresses(peerAddr, discovered)
 		queue = append(queue, discovered...)
 		node.emitEvent(Event{
 			Type:      EventTypeSent,
@@ -112,7 +112,7 @@ func (node *Node) PingOtherNode(peerAddr string, message string) error {
 		return fmt.Errorf("peer %s in reconnect cooldown for %s", peerAddr, wait.Round(time.Millisecond))
 	}
 	start := time.Now()
-	pingReply, discovered, err := node.transport.Ping(ctx, peerAddr, node.Addr, envelope, message)
+	pingReply, discovered, err := node.transport.Ping(ctx, peerAddr, node.Addr, node.publicKeyBase64(), envelope, message)
 	if err != nil {
 		backoff := node.markPeerFailure(peerAddr)
 		logNetworkEvent("ping_send", map[string]string{
@@ -126,7 +126,7 @@ func (node *Node) PingOtherNode(peerAddr string, message string) error {
 		return fmt.Errorf("get status ping: %w", err)
 	}
 	node.markPeerHealthy(peerAddr, time.Since(start))
-	node.mergePeerAddresses(discovered)
+	node.mergeDiscoveredPeerAddresses(peerAddr, discovered)
 	node.emitEvent(Event{
 		Type:      EventTypeSent,
 		MessageID: messageID,
@@ -146,10 +146,26 @@ func (node *Node) PingOtherNode(peerAddr string, message string) error {
 	return nil
 }
 
-func (node *Node) mergePeerAddresses(addresses []string) {
+func (node *Node) mergeDiscoveredPeerAddresses(source string, addresses []string) {
+	if !node.isTrustedDiscoverySource(source) {
+		logNetworkEvent("peer_discovery", map[string]string{
+			"peer":   source,
+			"result": "untrusted_source",
+		})
+		return
+	}
+	accepted := 0
 	for _, addr := range addresses {
+		if accepted >= maxDiscoveredPeersPerPing {
+			logNetworkEvent("peer_discovery", map[string]string{
+				"peer":   source,
+				"result": "truncated",
+			})
+			return
+		}
 		if err := node.AddPeer(addr); err != nil {
 			continue
 		}
+		accepted++
 	}
 }

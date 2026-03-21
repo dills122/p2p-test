@@ -37,7 +37,7 @@ func TestTransportPingE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	reply, _, err := sender.transport.Ping(ctx, receiver.Addr, sender.Addr, env, "hello")
+	reply, _, err := sender.transport.Ping(ctx, receiver.Addr, sender.Addr, sender.publicKeyBase64(), env, "hello")
 	if err != nil {
 		t.Fatalf("ping failed: %v", err)
 	}
@@ -84,11 +84,11 @@ func TestTransportPingDuplicateDroppedE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	firstReply, _, err := sender.transport.Ping(ctx, receiver.Addr, sender.Addr, env, "duplicate")
+	firstReply, _, err := sender.transport.Ping(ctx, receiver.Addr, sender.Addr, sender.publicKeyBase64(), env, "duplicate")
 	if err != nil {
 		t.Fatalf("first ping failed: %v", err)
 	}
-	secondReply, _, err := sender.transport.Ping(ctx, receiver.Addr, sender.Addr, env, "duplicate")
+	secondReply, _, err := sender.transport.Ping(ctx, receiver.Addr, sender.Addr, sender.publicKeyBase64(), env, "duplicate")
 	if err != nil {
 		t.Fatalf("second ping failed: %v", err)
 	}

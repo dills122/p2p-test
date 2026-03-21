@@ -209,7 +209,15 @@ func (service *Service) sendPeerMetadata(ctx context.Context) {
 		return
 	}
 	value := strings.Join(peers, ",")
-	if err := grpc.SetHeader(ctx, metadata.Pairs(peerMetadataKey, value)); err != nil {
+	headers := []string{peerMetadataKey, value}
+	if payload, signature, pubKey, err := buildSignedPeerAnnounce(service.node.Addr, peers, service.node.privKey); err == nil {
+		headers = append(headers,
+			peerAnnouncePayloadKey, payload,
+			peerAnnounceSignatureKey, signature,
+			peerAnnouncePubKeyKey, pubKey,
+		)
+	}
+	if err := grpc.SetHeader(ctx, metadata.Pairs(headers...)); err != nil {
 		log.Printf("failed to send peer metadata: %v", err)
 	}
 }
