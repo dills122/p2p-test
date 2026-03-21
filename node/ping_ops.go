@@ -72,28 +72,29 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 	}
 }
 
-func (node *Node) PingOtherNode(peerAddr *string, message string) {
+func (node *Node) PingOtherNode(peerAddr string, message string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 	envelope := protocol.NewEnvelope(protocol.MessageTypePing, node.Addr, []byte(message), protocol.DefaultTTL)
 	if err := envelope.Validate(); err != nil {
-		log.Fatalf("Failed to build ping envelope: %v", err)
+		return fmt.Errorf("build ping envelope: %w", err)
 	}
 	messageID := envelope.ID
-	pingReply, discovered, err := node.transport.Ping(ctx, *peerAddr, node.Addr, envelope, message)
+	pingReply, discovered, err := node.transport.Ping(ctx, peerAddr, node.Addr, envelope, message)
 	if err != nil {
-		log.Fatalf("Failed to get status ping: %v", err)
+		return fmt.Errorf("get status ping: %w", err)
 	}
-	node.markPeerHealthy(*peerAddr)
+	node.markPeerHealthy(peerAddr)
 	node.mergePeerAddresses(discovered)
 	node.emitEvent(Event{
 		Type:      EventTypeSent,
 		MessageID: messageID,
-		Peer:      *peerAddr,
+		Peer:      peerAddr,
 		Message:   message,
 		Timestamp: time.Now(),
 	})
-	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", *peerAddr, pingReply.Status, pingReply.Message)
+	fmt.Printf("Reply received from node %s with status: %d and message: %s \n", peerAddr, pingReply.Status, pingReply.Message)
+	return nil
 }
 
 func (node *Node) mergePeerAddresses(addresses []string) {

@@ -56,9 +56,12 @@ var startCmd = &cobra.Command{
 
 		go activeNodeOne.Start()
 
-		isReady := activeNodeOne.CheckIfReady()
+		isReady, err := activeNodeOne.CheckIfReady()
+		if err != nil {
+			log.Fatalf("Error when checking status of server: %v", err)
+		}
 		if !isReady {
-			log.Fatalf("Error when checking status of server")
+			log.Fatalf("Node is not ready")
 		}
 		reader := bufio.NewReader(os.Stdin)
 		for {
@@ -66,7 +69,12 @@ var startCmd = &cobra.Command{
 			promptCtl.BeginInput()
 			cmdString, err := reader.ReadString('\n')
 			if err != nil {
+				if err == io.EOF {
+					fmt.Println("Exiting interactive console")
+					return
+				}
 				fmt.Fprintln(os.Stderr, err)
+				continue
 			}
 			runCommand(cmdString, activeNodeOne)
 		}

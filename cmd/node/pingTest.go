@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/dills122/p2p-test/node"
@@ -16,7 +17,7 @@ var pingTestCmd = &cobra.Command{
 		confNodeOne := node.Config{
 			NodeName:                "node-one",
 			NodeAddr:                "127.0.0.1:10000",
-			ServiceDiscoveryAddress: "127.0.0.1:80000",
+			ServiceDiscoveryAddress: "127.0.0.1:10000",
 			KnownPeerAddresses:      []string{"127.0.0.1:10001"},
 		}
 		activeNodeOne := node.New(confNodeOne)
@@ -25,15 +26,20 @@ var pingTestCmd = &cobra.Command{
 		confNodeTwo := node.Config{
 			NodeName:                "node-two",
 			NodeAddr:                "127.0.0.1:10001",
-			ServiceDiscoveryAddress: "127.0.0.1:80000",
+			ServiceDiscoveryAddress: "127.0.0.1:10001",
 			KnownPeerAddresses:      []string{"127.0.0.1:10000"},
 		}
 		activeNodeTwo := node.New(confNodeTwo)
 		go activeNodeTwo.Start()
 		fmt.Printf("Node: %s started at %s and running on %s \n", confNodeTwo.NodeName, time.Now().UTC(), confNodeTwo.NodeAddr)
 		time.Sleep(2 * time.Second)
-		activeNodeOne.PingOtherNode(&confNodeTwo.NodeAddr, "hello from node 1")
-		activeNodeTwo.PingOtherNode(&confNodeOne.NodeAddr, "hello from node 2")
+		message, _ := cmd.Flags().GetString("message")
+		if err := activeNodeOne.PingOtherNode(confNodeTwo.NodeAddr, message+" from node 1"); err != nil {
+			log.Printf("node one ping failed: %v", err)
+		}
+		if err := activeNodeTwo.PingOtherNode(confNodeOne.NodeAddr, message+" from node 2"); err != nil {
+			log.Printf("node two ping failed: %v", err)
+		}
 	},
 }
 
