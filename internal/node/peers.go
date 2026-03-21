@@ -3,14 +3,56 @@ package node
 import (
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"strings"
 	"time"
 )
 
-func (node *Node) markPeerHealthy(addr string) {
-	node.peers.UpdateStatus(addr, "online")
-	node.peers.UpdateLastSeen(addr, time.Now())
+const (
+	maxPeerScore         = 100
+	minPeerScore         = -100
+	peerFailurePenalty   = 5
+	peerSuccessReward    = 1
+	maxReconnectBackoff  = 30 * time.Second
+	baseReconnectBackoff = 500 * time.Millisecond
+)
+
+func (node *Node) markPeerHealthy(addr string, rtt time.Duration) {
+	now := time.Now()
+	node.peers.Update(addr, func(peer *Peer) {
+		peer.Status = "online"
+		peer.LastSeen = now
+		peer.Failures = 0
+		peer.CooldownUntil = time.Time{}
+		peer.LastRTT = rtt
+		peer.Score = minInt(maxPeerScore, peer.Score+peerSuccessReward)
+	})
+}
+
+func (node *Node) markPeerFailure(addr string) time.Duration {
+	now := time.Now()
+	var backoff time.Duration
+	node.peers.Update(addr, func(peer *Peer) {
+		peer.Failures++
+		backoff = calculateReconnectBackoff(peer.Failures)
+		peer.CooldownUntil = now.Add(backoff)
+		peer.Status = "offline"
+		peer.Score = maxInt(minPeerScore, peer.Score-peerFailurePenalty)
+	})
+	return backoff
+}
+
+func (node *Node) canAttemptPeer(addr string) (bool, time.Duration) {
+	peer, ok := node.peers.Get(addr)
+	if !ok || peer.CooldownUntil.IsZero() {
+		return true, 0
+	}
+	remaining := time.Until(peer.CooldownUntil)
+	if remaining <= 0 {
+		return true, 0
+	}
+	return false, remaining
 }
 
 func (node *Node) AddPeer(addr string) error {
@@ -56,4 +98,30 @@ func (node *Node) peerAddresses() []string {
 		add(peer.Addr)
 	}
 	return addrs
+}
+
+func calculateReconnectBackoff(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	power := math.Pow(2, float64(failures-1))
+	backoff := time.Duration(float64(baseReconnectBackoff) * power)
+	if backoff > maxReconnectBackoff {
+		return maxReconnectBackoff
+	}
+	return backoff
+}
+
+func minInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

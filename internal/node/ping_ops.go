@@ -42,17 +42,29 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 			continue
 		}
 		visited[peerAddr] = struct{}{}
+		if allowed, wait := node.canAttemptPeer(peerAddr); !allowed {
+			logNetworkEvent("ping_send", map[string]string{
+				"msg_id":   messageID,
+				"msg_type": string(envelope.Type),
+				"peer":     peerAddr,
+				"result":   "skipped_backoff",
+				"wait_ms":  fmt.Sprintf("%d", wait.Milliseconds()),
+			})
+			continue
+		}
 		start := time.Now()
 
 		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
 		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, envelope, msg)
 		cancel()
 		if err != nil {
+			backoff := node.markPeerFailure(peerAddr)
 			logNetworkEvent("ping_send", map[string]string{
 				"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
 				"msg_id":     messageID,
 				"msg_type":   string(envelope.Type),
 				"peer":       peerAddr,
+				"backoff_ms": fmt.Sprintf("%d", backoff.Milliseconds()),
 				"result":     "error",
 			})
 			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
@@ -66,7 +78,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 			})
 			continue
 		}
-		node.markPeerHealthy(peerAddr)
+		node.markPeerHealthy(peerAddr, time.Since(start))
 		node.mergePeerAddresses(discovered)
 		queue = append(queue, discovered...)
 		node.emitEvent(Event{
@@ -96,19 +108,24 @@ func (node *Node) PingOtherNode(peerAddr string, message string) error {
 		return fmt.Errorf("build ping envelope: %w", err)
 	}
 	messageID := envelope.ID
+	if allowed, wait := node.canAttemptPeer(peerAddr); !allowed {
+		return fmt.Errorf("peer %s in reconnect cooldown for %s", peerAddr, wait.Round(time.Millisecond))
+	}
 	start := time.Now()
 	pingReply, discovered, err := node.transport.Ping(ctx, peerAddr, node.Addr, envelope, message)
 	if err != nil {
+		backoff := node.markPeerFailure(peerAddr)
 		logNetworkEvent("ping_send", map[string]string{
 			"latency_ms": fmt.Sprintf("%d", time.Since(start).Milliseconds()),
 			"msg_id":     messageID,
 			"msg_type":   string(envelope.Type),
 			"peer":       peerAddr,
+			"backoff_ms": fmt.Sprintf("%d", backoff.Milliseconds()),
 			"result":     "error",
 		})
 		return fmt.Errorf("get status ping: %w", err)
 	}
-	node.markPeerHealthy(peerAddr)
+	node.markPeerHealthy(peerAddr, time.Since(start))
 	node.mergePeerAddresses(discovered)
 	node.emitEvent(Event{
 		Type:      EventTypeSent,

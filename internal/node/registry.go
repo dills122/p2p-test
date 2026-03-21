@@ -12,6 +12,8 @@ type PeerRegistry interface {
 	AddMany(addrs []string)
 	Remove(addr string)
 	List() []Peer
+	Get(addr string) (Peer, bool)
+	Update(addr string, apply func(*Peer))
 	UpdateStatus(addr string, status string)
 	UpdateLastSeen(addr string, ts time.Time)
 }
@@ -67,6 +69,27 @@ func (m *memoryPeerRegistry) List() []Peer {
 		return out[i].Addr < out[j].Addr
 	})
 	return out
+}
+
+func (m *memoryPeerRegistry) Get(addr string) (Peer, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	peer, ok := m.peers[addr]
+	return peer, ok
+}
+
+func (m *memoryPeerRegistry) Update(addr string, apply func(*Peer)) {
+	if apply == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	peer, ok := m.peers[addr]
+	if !ok {
+		return
+	}
+	apply(&peer)
+	m.peers[addr] = peer
 }
 
 func (m *memoryPeerRegistry) UpdateStatus(addr string, status string) {

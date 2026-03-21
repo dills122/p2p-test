@@ -180,7 +180,7 @@ func (service *Service) trackCaller(ctx context.Context, message string) (string
 			if err := service.node.AddPeer(addr); err != nil {
 				continue
 			}
-			service.node.markPeerHealthy(addr)
+			service.node.markPeerHealthy(addr, 0)
 			if remote == "" {
 				remote = addr
 			}
@@ -190,7 +190,7 @@ func (service *Service) trackCaller(ctx context.Context, message string) (string
 		if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
 			remote = pr.Addr.String()
 			if err := service.node.AddPeer(remote); err == nil {
-				service.node.markPeerHealthy(remote)
+				service.node.markPeerHealthy(remote, 0)
 			}
 		}
 	}

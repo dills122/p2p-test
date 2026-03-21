@@ -109,7 +109,19 @@ func runCommand(commandStr string, node *node.Node) {
 		}
 	case "peers":
 		for _, peer := range node.ListPeers() {
-			fmt.Printf("%s\t%s\t%s\n", peer.Addr, peer.Status, peer.LastSeen.Format(time.RFC3339))
+			cooldown := "-"
+			if !peer.CooldownUntil.IsZero() {
+				cooldown = peer.CooldownUntil.Format(time.RFC3339)
+			}
+			fmt.Printf("%s\t%s\t%s\tscore=%d\tfailures=%d\trtt=%s\tcooldown=%s\n",
+				peer.Addr,
+				peer.Status,
+				peer.LastSeen.Format(time.RFC3339),
+				peer.Score,
+				peer.Failures,
+				peer.LastRTT.String(),
+				cooldown,
+			)
 		}
 	default:
 		fmt.Println("Unknown command")
