@@ -2,6 +2,7 @@ package node
 
 import (
 	"log"
+	"time"
 
 	ping "github.com/dills122/p2p-test/pkg/ping"
 )
@@ -12,13 +13,18 @@ type Node struct {
 	peers     PeerRegistry
 	events    *eventBus
 	transport Transport
+	seen      *messageGuard
 	ping.UnimplementedPingServiceServer
 }
 
 const (
-	peerMetadataKey      = "peers"
-	selfMetadataKey      = "self-addr"
-	messageIDMetadataKey = "message-id"
+	peerMetadataKey            = "peers"
+	selfMetadataKey            = "self-addr"
+	messageIDMetadataKey       = "message-id"
+	protocolVersionMetadataKey = "protocol-version"
+	messageTypeMetadataKey     = "message-type"
+	ttlMetadataKey             = "ttl"
+	hopCountMetadataKey        = "hop-count"
 )
 
 func New(config Config) *Node {
@@ -33,6 +39,7 @@ func New(config Config) *Node {
 		peers:     registry,
 		events:    newEventBus(),
 		transport: NewGRPCTransport(),
+		seen:      newMessageGuard(5 * time.Minute),
 	}
 	return n
 }

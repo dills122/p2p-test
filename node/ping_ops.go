@@ -6,14 +6,19 @@ import (
 	"log"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/dills122/p2p-test/pkg/protocol"
 )
 
 func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 	if len(msg) == 0 {
 		msg = "Pinging"
 	}
-	messageID := uuid.NewString()
+	envelope := protocol.NewEnvelope(protocol.MessageTypePing, node.Addr, []byte(msg), protocol.DefaultTTL)
+	if err := envelope.Validate(); err != nil {
+		log.Printf("failed to build ping envelope: %v", err)
+		return
+	}
+	messageID := envelope.ID
 	knownPeers := node.peers.List()
 	if len(knownPeers) == 0 {
 		log.Println("No known peers to ping")
@@ -39,7 +44,7 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 		visited[peerAddr] = struct{}{}
 
 		peerCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, messageID, msg)
+		reply, discovered, err := node.transport.Ping(peerCtx, peerAddr, node.Addr, envelope, msg)
 		cancel()
 		if err != nil {
 			log.Printf("failed to ping node at address %s: %v", peerAddr, err)
@@ -70,8 +75,12 @@ func (node *Node) PingAllNodes(ctx context.Context, msg string) {
 func (node *Node) PingOtherNode(peerAddr *string, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	messageID := uuid.NewString()
-	pingReply, discovered, err := node.transport.Ping(ctx, *peerAddr, node.Addr, messageID, message)
+	envelope := protocol.NewEnvelope(protocol.MessageTypePing, node.Addr, []byte(message), protocol.DefaultTTL)
+	if err := envelope.Validate(); err != nil {
+		log.Fatalf("Failed to build ping envelope: %v", err)
+	}
+	messageID := envelope.ID
+	pingReply, discovered, err := node.transport.Ping(ctx, *peerAddr, node.Addr, envelope, message)
 	if err != nil {
 		log.Fatalf("Failed to get status ping: %v", err)
 	}
